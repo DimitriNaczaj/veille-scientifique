@@ -1,9 +1,11 @@
+import base64
 import sqlite3
 import tempfile
 import unittest
 from email.message import EmailMessage
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import quote, urlencode
 
 from veille.mail_parser import normalize_doi, parse_message
 from veille.digest import render_digest
@@ -47,6 +49,86 @@ class NormalizeDoiTests(unittest.TestCase):
 
 
 class PipelineTests(unittest.TestCase):
+    def test_extracts_canonical_nature_url_from_legacy_aws_tracking_link(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "legacy-nature.eml"
+            payload = urlencode(
+                {
+                    "scenario": "alert",
+                    "target": "https://www.nature.com/articles/behavior-2025",
+                }
+            ).encode("utf-8")
+            encoded_payload = base64.urlsafe_b64encode(payload).decode("ascii")
+            intermediary = "https://smc-link.example/?{}".format(
+                urlencode({"_L54AD1F204_": encoded_payload})
+            )
+            tracking_url = (
+                "https://token.r.eu-west-1.awstrack.me/L0/{}/1/tracking"
+            ).format(quote(intermediary, safe=""))
+            write_email(
+                path,
+                "<legacy-nature@example.org>",
+                "Legacy Nature alert",
+                markup=(
+                    '<a href="{}">How stress changes habitual decision making</a>'
+                ).format(tracking_url),
+            )
+
+            parsed = parse_message(path)
+
+            self.assertEqual(len(parsed.publications), 1)
+            self.assertEqual(
+                parsed.publications[0].url,
+                "https://www.nature.com/articles/behavior-2025",
+            )
+
+    def test_extracts_wiley_article_titles_from_tracking_links(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "wiley.eml"
+            write_email(
+                path,
+                "<wiley@example.org>",
+                "Wiley article alert",
+                markup=(
+                    '<a href="https://el.wiley.com/ls/click?upn=opaque-token">'
+                    "How uncertainty messages influence consumer decisions"
+                    "</a>"
+                    '<a href="https://el.wiley.com/ls/click?upn=navigation-token">'
+                    "View latest articles"
+                    "</a>"
+                ),
+            )
+
+            parsed = parse_message(path)
+
+            self.assertEqual(len(parsed.publications), 1)
+            self.assertEqual(
+                parsed.publications[0].title,
+                "How uncertainty messages influence consumer decisions",
+            )
+
+    def test_extracts_taylor_and_francis_titles_from_tracking_links(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "taylor-francis.eml"
+            write_email(
+                path,
+                "<taylor-francis@example.org>",
+                "Taylor & Francis article alert",
+                markup=(
+                    '<a href="https://url6649.tandfonline.com/ls/click?upn=opaque-token">'
+                    "Social norms and preventive behavior across communities"
+                    "</a>"
+                ),
+            )
+
+            parsed = parse_message(path)
+
+            self.assertEqual(len(parsed.publications), 1)
+            self.assertEqual(
+                parsed.publications[0].title,
+                "Social norms and preventive behavior across communities",
+            )
+
     def test_ignores_apa_journal_heading_that_matches_subject(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

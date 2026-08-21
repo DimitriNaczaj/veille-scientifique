@@ -5,6 +5,7 @@ Application de veille scientifique autonome et légère pour Synology DS218.
 ## Fonctionnalités actuelles
 
 - lecture de newsletters `.eml` ;
+- import ponctuel d’historiques MBOX ou MBOX.ZIP ;
 - extraction des DOI depuis le texte et les liens HTML ;
 - découverte des articles sans DOI depuis les titres et liens de suivi des éditeurs pris en charge ;
 - enrichissement des DOI avec les métadonnées et abstracts disponibles dans Crossref ;
@@ -47,6 +48,31 @@ de tâches DSM. `publications_new` compte les nouvelles identités insérées,
 `publications_delivered` les références effectivement analysées pour le digest et
 `publications_pending` le reliquat à reprendre.
 
+## Importer un historique de newsletters
+
+L’import d’un export MBOX est entièrement local : il ne contacte ni Crossref ni un
+service d’IA, ne modifie pas l’archive source et ne marque aucune publication comme
+livrée. Il accepte un fichier MBOX brut ou un ZIP contenant un unique MBOX :
+
+```bash
+python3 -m veille import-mbox \
+  --source /volume1/Bellegarde/import/Articles.mbox.zip \
+  --database /volume1/Bellegarde/veille-scientifique/data/veille.sqlite \
+  --catalog /volume1/Bellegarde/veille-scientifique/out/catalog.csv \
+  --report /volume1/Bellegarde/veille-scientifique/out/import-report.json
+```
+
+Le catalogue CSV contient une ligne par référence unique avec son DOI éventuel,
+son titre, son lien et la newsletter source. Le rapport JSON donne la couverture
+globale et par domaine éditeur. Une relance sur la même base ignore les messages
+déjà importés tout en régénérant le catalogue et les statistiques de couverture.
+Les quatre chemins `source`, `database`, `catalog` et `report` doivent être
+distincts ; la commande refuse une collision avant toute écriture.
+
+Les exports MBOX, catalogues et rapports locaux sont exclus de Git. Ils peuvent
+contenir des titres, des expéditeurs ou des liens personnalisés et doivent rester
+dans un partage NAS à accès restreint.
+
 ## Tests
 
 ```bash
@@ -62,7 +88,7 @@ exclus de Git.
 
 1. Installer le paquet Python 3 depuis le Centre de paquets Synology.
 2. Copier ce dossier dans un partage, par exemple `/volume1/Bellegarde/veille-scientifique`.
-3. Créer les dossiers `inbox`, `data` et `out` s’ils n’existent pas.
+3. Créer les dossiers `inbox`, `data`, `out` et éventuellement `import` s’ils n’existent pas.
 4. Dans **Panneau de configuration → Planificateur de tâches**, créer une tâche planifiée exécutée par un utilisateur dédié.
 5. Utiliser une commande avec des chemins absolus :
 

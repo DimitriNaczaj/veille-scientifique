@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import html
 import re
@@ -6,7 +7,7 @@ from email.parser import BytesParser
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import List
-from urllib.parse import unquote, urlsplit, urlunsplit
+from urllib.parse import parse_qs, unquote, urlsplit, urlunsplit
 
 from .models import ParsedMessage, PublicationCandidate
 
@@ -18,7 +19,9 @@ ARTICLE_LINK_DOMAINS = {
     "click.aaas.sciencepubs.org",
     "click.info.apa.org",
     "click.notification.elsevier.com",
+    "el.wiley.com",
     "links.springernature.com",
+    "url6649.tandfonline.com",
     "www.mdpi.com",
 }
 NON_ARTICLE_TEXT = (
@@ -29,6 +32,7 @@ NON_ARTICLE_TEXT = (
     "table of contents",
     "terms and conditions",
     "unsubscribe",
+    "view latest articles",
     "view this email",
 )
 
@@ -135,6 +139,11 @@ def _normalized_title(title):
     return " ".join(re.sub(r"[^\w]+", " ", title.casefold()).split())
 
 
+def publication_identity_from_title(title):
+    normalized = _normalized_title(title)
+    return "title:" + hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
 def _publication_title(title):
     cleaned = " ".join(title.split()).strip()
     lowered = cleaned.casefold()
@@ -152,6 +161,44 @@ def _publication_title(title):
 def _canonical_article_url(raw_url):
     decoded = html.unescape(raw_url.strip())
     parsed = urlsplit(decoded)
+    if parsed.netloc.casefold().endswith(".awstrack.me"):
+        segments = parsed.path.split("/")
+        if len(segments) > 2 and segments[1] == "L0":
+            intermediary = urlsplit(unquote(segments[2]))
+            encoded_values = parse_qs(intermediary.query).get("_L54AD1F204_", ())
+            if encoded_values:
+                encoded = encoded_values[0]
+                try:
+                    padding = "=" * (-len(encoded) % 4)
+                    payload = base64.urlsafe_b64decode(encoded + padding).decode(
+                        "utf-8"
+                    )
+                    targets = parse_qs(payload).get("target", ())
+                    if targets:
+                        target = targets[0]
+                        for _ in range(3):
+                            unquoted = unquote(target)
+                            if unquoted == target:
+                                break
+                            target = unquoted
+                        canonical = urlsplit(target)
+                        if (
+                            canonical.scheme in ("http", "https")
+                            and canonical.netloc.casefold()
+                            in ("nature.com", "www.nature.com")
+                            and canonical.path.casefold().startswith("/articles/")
+                        ):
+                            return urlunsplit(
+                                (
+                                    canonical.scheme,
+                                    canonical.netloc,
+                                    canonical.path,
+                                    "",
+                                    "",
+                                )
+                            )
+                except (ValueError, UnicodeDecodeError):
+                    pass
     if parsed.netloc.casefold() == "click.notification.elsevier.com":
         segments = parsed.path.split("/")
         if len(segments) > 2 and segments[1] == "CL0":
@@ -180,12 +227,21 @@ def _link_candidate(title, url):
     parsed = urlsplit(url)
     if parsed.scheme not in ("http", "https"):
         return None
-    if parsed.netloc.casefold() not in ARTICLE_LINK_DOMAINS:
+    outer_host = parsed.netloc.casefold()
+    if (
+        outer_host not in ARTICLE_LINK_DOMAINS
+        and not outer_host.endswith(".awstrack.me")
+    ):
         return None
     canonical_url = _canonical_article_url(url)
     canonical = urlsplit(canonical_url)
     canonical_host = canonical.netloc.casefold()
     canonical_path = canonical.path.casefold()
+    if outer_host.endswith(".awstrack.me") and not (
+        canonical_host in ("nature.com", "www.nature.com")
+        and canonical_path.startswith("/articles/")
+    ):
+        return None
     if canonical_host == "www.mdpi.com" and (
         "/special_issues/" in canonical_path or "/events/" in canonical_path
     ):
@@ -195,10 +251,8 @@ def _link_candidate(title, url):
         or canonical_path.startswith("/science/journal/aip/")
     ):
         return None
-    normalized = _normalized_title(useful_title)
-    identity = "title:" + hashlib.sha256(normalized.encode("utf-8")).hexdigest()
     return PublicationCandidate(
-        identity=identity,
+        identity=publication_identity_from_title(useful_title),
         doi=None,
         title=useful_title,
         url=canonical_url,
@@ -246,8 +300,7 @@ def _without_newsletter_heading(candidates, subject):
     )
 
 
-def parse_message(path):
-    raw = Path(path).read_bytes()
+def parse_message_bytes(raw):
     message = BytesParser(policy=policy.default).parsebytes(raw)
     message_id = str(message.get("Message-ID", "")).strip()
     identity = message_id if message_id else "sha256:" + hashlib.sha256(raw).hexdigest()
@@ -321,3 +374,7 @@ def parse_message(path):
             _deduplicate_candidates(candidates), subject
         ),
     )
+
+
+def parse_message(path):
+    return parse_message_bytes(Path(path).read_bytes())

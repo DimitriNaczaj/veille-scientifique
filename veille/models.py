@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 
 class PublicationPriority(Enum):
@@ -86,5 +86,31 @@ class RunReport:
             "publications_excluded": self.publications_excluded,
             "publications_pending": self.publications_pending,
             "warnings": list(self.warnings),
+            "errors": list(self.errors),
+        }
+
+
+@dataclass(frozen=True)
+class ImportReport:
+    messages_total: int
+    messages_processed: int
+    messages_skipped: int
+    messages_without_publication: int
+    publications_detected: int
+    publications_new: int
+    publications_unique: int
+    sender_domains: Dict[str, Dict[str, int]]
+    errors: Tuple[str, ...]
+
+    def as_dict(self):
+        return {
+            "messages_total": self.messages_total,
+            "messages_processed": self.messages_processed,
+            "messages_skipped": self.messages_skipped,
+            "messages_without_publication": self.messages_without_publication,
+            "publications_detected": self.publications_detected,
+            "publications_new": self.publications_new,
+            "publications_unique": self.publications_unique,
+            "sender_domains": self.sender_domains,
             "errors": list(self.errors),
         }

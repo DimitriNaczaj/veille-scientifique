@@ -33,3 +33,21 @@ sur ses faux positifs et faux négatifs avant l’envoi automatique.
 Les courriels réels, leurs adresses et leur contenu ne sont pas versionnés. Les
 tests automatisés emploient des messages synthétiques reproduisant seulement les
 structures techniques utiles.
+
+## Import de l’historique MBOX
+
+Validation effectuée le 22 août 2026 sur l’archive locale d’environ un an :
+
+- 1 358 messages traités sur 1 358, sans erreur ;
+- 8 domaines expéditeurs couverts ;
+- 38 712 signaux de publication détectés ;
+- 35 357 références uniques après déduplication bidirectionnelle titre ↔ DOI ;
+- 0 message sans publication détectée après ajout des anciens relais Nature ;
+- 106 messages Taylor & Francis et 41 messages Wiley couverts ;
+- l’archive ZIP source est restée inchangée ;
+- une seconde exécution ignore les 1 358 messages déjà connus et conserve les mêmes statistiques de couverture.
+
+Cette passe ne contacte ni Crossref ni un modèle d’IA. Elle valide l’ingestion,
+l’extraction structurelle et l’idempotence, mais pas encore la pertinence métier des
+35 357 références. Le prochain jalon consiste à mesurer le préfiltre sur un
+échantillon annoté avant de lancer l’enrichissement et les résumés à grande échelle.

@@ -5,3 +5,8 @@ data/*.sqlite
 data/*.sqlite-*
 inbox/*.eml
 out/*.html
+out/*.csv
+out/*.json
+*.mbox
+*.mbox.zip
+veille-scientifique.ini
