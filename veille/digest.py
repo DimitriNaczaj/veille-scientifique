@@ -3,6 +3,7 @@ import tempfile
 from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
+from urllib.parse import quote
 
 
 def _publication_html(publication):
@@ -10,7 +11,7 @@ def _publication_html(publication):
     doi = escape(publication.doi)
     source_subject = escape(publication.source_subject)
     source_sender = escape(publication.source_sender)
-    url = "https://doi.org/" + doi
+    url = escape("https://doi.org/" + quote(publication.doi, safe="/"), quote=True)
     return (
         "<article>"
         '<h2><a href="{url}">{title}</a></h2>'

@@ -6,6 +6,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from veille.mail_parser import normalize_doi, parse_message
+from veille.digest import render_digest
+from veille.models import NewPublication
 from veille.pipeline import run_pipeline
 from veille.storage import Store
 
@@ -45,6 +47,21 @@ class NormalizeDoiTests(unittest.TestCase):
 
 
 class PipelineTests(unittest.TestCase):
+    def test_digest_url_encodes_reserved_doi_characters(self):
+        publication = NewPublication(
+            doi="10.1234/a&b=c@d%{e}[f]?",
+            title="DOI étendu",
+            source_subject="Newsletter",
+            source_sender="éditeur@example.org",
+        )
+
+        digest = render_digest((publication,))
+
+        self.assertIn(
+            'href="https://doi.org/10.1234/a%26b%3Dc%40d%25%7Be%7D%5Bf%5D%3F"',
+            digest,
+        )
+
     def test_extracts_html_links_deduplicates_and_is_idempotent(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
