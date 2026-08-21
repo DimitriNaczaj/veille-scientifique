@@ -1,3 +1,5 @@
+import os
+import tempfile
 from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
@@ -70,4 +72,25 @@ def render_digest(publications):
 def write_digest(path, publications):
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(render_digest(publications), encoding="utf-8")
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=str(destination.parent),
+            prefix="." + destination.name + ".",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            temporary.write(render_digest(publications))
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        os.replace(str(temporary_path), str(destination))
+    except Exception:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink()
+            except FileNotFoundError:
+                pass
+        raise

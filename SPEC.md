@@ -30,6 +30,8 @@ Cet incrément valide le cœur idempotent du système avant d’ajouter l’acc�
 - Le DOI normalisé en minuscules constitue l’identité canonique d’une publication.
 - L’extraction accepte les DOI visibles et ceux contenus dans les attributs `href` du HTML.
 - Le digest d’une exécution contient uniquement les publications jamais vues auparavant.
+- Une publication reste en attente tant qu’un digest complet n’a pas été écrit ; une relance reprend ces publications après une interruption.
+- Le digest est remplacé atomiquement afin de ne jamais exposer un fichier partiellement écrit.
 - L’interface testée au niveau le plus élevé est l’exécution du pipeline sur un dossier de messages et l’observation de son rapport, de sa base et de son HTML.
 
 ## Testing Decisions

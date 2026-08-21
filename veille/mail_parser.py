@@ -5,14 +5,15 @@ from email import policy
 from email.parser import BytesParser
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import List
 from urllib.parse import unquote
 
 from .models import ParsedMessage, PublicationCandidate
 
 
-DOI_PATTERN = re.compile(r"10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.IGNORECASE)
-TRAILING_PUNCTUATION = ".,;:!?\"'»›]}"
+DOI_PATTERN = re.compile(r"10\.\d{4,9}/[-._;()/:A-Z0-9+<>]+", re.IGNORECASE)
+TRAILING_PUNCTUATION = ".,;:!?\"'»›"
+BALANCED_DELIMITERS = (("(", ")"), ("[", "]"), ("{", "}"), ("<", ">"))
 
 
 class _NewsletterHTMLParser(HTMLParser):
@@ -64,8 +65,9 @@ def normalize_doi(raw):
             value = value[len(prefix) :]
             break
     value = value.strip().rstrip(TRAILING_PUNCTUATION)
-    while value.endswith(")") and value.count("(") < value.count(")"):
-        value = value[:-1]
+    for opening, closing in BALANCED_DELIMITERS:
+        while value.endswith(closing) and value.count(opening) < value.count(closing):
+            value = value[:-1]
     return value.lower()
 
 
@@ -94,28 +96,15 @@ def _extract_from_lines(lines):
     return candidates
 
 
-def _plain_text_parts(message):
+def _text_parts(message, content_type):
     parts = []  # type: List[str]
     if message.is_multipart():
         for part in message.walk():
             if part.get_content_disposition() == "attachment":
                 continue
-            if part.get_content_type() == "text/plain":
+            if part.get_content_type() == content_type:
                 parts.append(part.get_content())
-    elif message.get_content_type() == "text/plain":
-        parts.append(message.get_content())
-    return parts
-
-
-def _html_parts(message):
-    parts = []  # type: List[str]
-    if message.is_multipart():
-        for part in message.walk():
-            if part.get_content_disposition() == "attachment":
-                continue
-            if part.get_content_type() == "text/html":
-                parts.append(part.get_content())
-    elif message.get_content_type() == "text/html":
+    elif message.get_content_type() == content_type:
         parts.append(message.get_content())
     return parts
 
@@ -140,11 +129,11 @@ def parse_message(path):
     identity = message_id if message_id else "sha256:" + hashlib.sha256(raw).hexdigest()
 
     candidates = []  # type: List[PublicationCandidate]
-    for text in _plain_text_parts(message):
+    for text in _text_parts(message, "text/plain"):
         lines = tuple(line.strip() for line in text.splitlines() if line.strip())
         candidates.extend(_extract_from_lines(lines))
 
-    for markup in _html_parts(message):
+    for markup in _text_parts(message, "text/html"):
         parser = _NewsletterHTMLParser()
         parser.feed(markup)
         candidates.extend(_extract_from_lines(parser.visible_lines()))

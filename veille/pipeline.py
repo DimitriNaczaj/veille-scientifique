@@ -14,7 +14,6 @@ def run_pipeline(inbox, database, output):
     messages_processed = 0
     messages_skipped = 0
     publications_detected = 0
-    new_publications = []
     errors = []
 
     store = Store(database)
@@ -26,18 +25,21 @@ def run_pipeline(inbox, database, output):
                     messages_skipped += 1
                     continue
                 publications_detected += len(message.publications)
-                new_publications.extend(store.add_message(message, message_path))
+                store.add_message(message, message_path)
                 messages_processed += 1
             except Exception as error:
                 errors.append("{}: {}".format(message_path.name, error))
+
+        pending_publications = store.pending_publications()
+        write_digest(output, pending_publications)
+        store.mark_delivered(pending_publications)
     finally:
         store.close()
 
-    write_digest(output, tuple(new_publications))
     return RunReport(
         messages_processed=messages_processed,
         messages_skipped=messages_skipped,
         publications_detected=publications_detected,
-        publications_new=len(new_publications),
+        publications_new=len(pending_publications),
         errors=tuple(errors),
     )

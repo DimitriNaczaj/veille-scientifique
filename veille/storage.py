@@ -1,5 +1,4 @@
 import sqlite3
-from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,7 +19,8 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE TABLE IF NOT EXISTS publications (
     doi TEXT PRIMARY KEY,
     title TEXT,
-    first_seen_at TEXT NOT NULL
+    first_seen_at TEXT NOT NULL,
+    delivered_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS message_publications (
@@ -54,7 +54,6 @@ class Store:
 
     def add_message(self, message, source_path):
         now = _utc_now()
-        new_publications = []
         with self.connection:
             self.connection.execute(
                 "INSERT INTO messages(identity, subject, sender, source_path, processed_at) "
@@ -70,14 +69,6 @@ class Store:
                         "INSERT INTO publications(doi, title, first_seen_at) VALUES (?, ?, ?)",
                         (candidate.doi, candidate.title, now),
                     )
-                    new_publications.append(
-                        NewPublication(
-                            doi=candidate.doi,
-                            title=candidate.title,
-                            source_subject=message.subject,
-                            source_sender=message.sender,
-                        )
-                    )
                 elif not exists[0] and candidate.title:
                     self.connection.execute(
                         "UPDATE publications SET title = ? WHERE doi = ?",
@@ -88,10 +79,32 @@ class Store:
                     "VALUES (?, ?)",
                     (message.identity, candidate.doi),
                 )
-        return tuple(new_publications)
+    def pending_publications(self):
+        rows = self.connection.execute(
+            "SELECT p.doi, p.title, m.subject, m.sender "
+            "FROM publications p "
+            "JOIN message_publications mp ON mp.rowid = ("
+            "  SELECT MIN(mp2.rowid) FROM message_publications mp2 "
+            "  WHERE mp2.publication_doi = p.doi"
+            ") "
+            "JOIN messages m ON m.identity = mp.message_identity "
+            "WHERE p.delivered_at IS NULL "
+            "ORDER BY p.first_seen_at, p.doi"
+        ).fetchall()
+        return tuple(
+            NewPublication(
+                doi=row[0],
+                title=row[1],
+                source_subject=row[2],
+                source_sender=row[3],
+            )
+            for row in rows
+        )
 
-    def publication_count(self):
-        return self.connection.execute("SELECT COUNT(*) FROM publications").fetchone()[0]
-
-    def message_count(self):
-        return self.connection.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+    def mark_delivered(self, publications):
+        now = _utc_now()
+        with self.connection:
+            self.connection.executemany(
+                "UPDATE publications SET delivered_at = ? WHERE doi = ?",
+                ((now, publication.doi) for publication in publications),
+            )

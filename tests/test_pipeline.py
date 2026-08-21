@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from email.message import EmailMessage
 from pathlib import Path
+from unittest.mock import patch
 
 from veille.mail_parser import normalize_doi, parse_message
 from veille.pipeline import run_pipeline
@@ -25,6 +26,14 @@ class NormalizeDoiTests(unittest.TestCase):
         self.assertEqual(
             normalize_doi("https://doi.org/10.1234/ABC.Def."),
             "10.1234/abc.def",
+        )
+
+    def test_preserves_balanced_delimiters_in_historical_doi(self):
+        self.assertEqual(
+            normalize_doi(
+                "10.1002/(SICI)1099-0844(199912)17:4<290::AID-CBF849>3.0.CO;2-P"
+            ),
+            "10.1002/(sici)1099-0844(199912)17:4<290::aid-cbf849>3.0.co;2-p",
         )
 
 
@@ -67,13 +76,16 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(first.publications_new, 3)
             self.assertEqual(first.errors, ())
 
-            with sqlite3.connect(str(database)) as connection:
+            connection = sqlite3.connect(str(database))
+            try:
                 self.assertEqual(
                     connection.execute("SELECT COUNT(*) FROM messages").fetchone()[0], 2
                 )
                 self.assertEqual(
                     connection.execute("SELECT COUNT(*) FROM publications").fetchone()[0], 3
                 )
+            finally:
+                connection.close()
 
             html = digest.read_text(encoding="utf-8")
             self.assertIn("3 nouvelle(s) publication(s)", html)
@@ -88,6 +100,40 @@ class PipelineTests(unittest.TestCase):
                 "Aucune nouvelle publication détectée",
                 digest.read_text(encoding="utf-8"),
             )
+
+    def test_retries_pending_publications_when_digest_write_failed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "inbox"
+            inbox.mkdir()
+            database = root / "data" / "veille.sqlite"
+            digest = root / "out" / "digest.html"
+            write_email(
+                inbox / "newsletter.eml",
+                "<retry@example.org>",
+                "Newsletter à reprendre",
+                plain="Article à conserver\n10.1234/retry.1",
+            )
+
+            with patch("veille.pipeline.write_digest", side_effect=OSError("volume plein")):
+                with self.assertRaises(OSError):
+                    run_pipeline(inbox, database, digest)
+
+            retry = run_pipeline(inbox, database, digest)
+            self.assertEqual(retry.messages_processed, 0)
+            self.assertEqual(retry.messages_skipped, 1)
+            self.assertEqual(retry.publications_new, 1)
+            self.assertIn("10.1234/retry.1", digest.read_text(encoding="utf-8"))
+
+            connection = sqlite3.connect(str(database))
+            try:
+                delivered_at = connection.execute(
+                    "SELECT delivered_at FROM publications WHERE doi = ?",
+                    ("10.1234/retry.1",),
+                ).fetchone()[0]
+            finally:
+                connection.close()
+            self.assertIsNotNone(delivered_at)
 
     def test_uses_content_hash_when_message_id_is_missing(self):
         with tempfile.TemporaryDirectory() as directory:
