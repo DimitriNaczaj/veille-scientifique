@@ -4,8 +4,10 @@ from typing import Optional, Tuple
 
 @dataclass(frozen=True)
 class PublicationCandidate:
-    doi: str
+    identity: str
+    doi: Optional[str]
     title: Optional[str]
+    url: Optional[str]
 
 
 @dataclass(frozen=True)
@@ -18,8 +20,10 @@ class ParsedMessage:
 
 @dataclass(frozen=True)
 class NewPublication:
-    doi: str
+    identity: str
+    doi: Optional[str]
     title: Optional[str]
+    url: Optional[str]
     source_subject: str
     source_sender: str
 

@@ -7,21 +7,30 @@ from urllib.parse import quote
 
 
 def _publication_html(publication):
-    title = escape(publication.title or publication.doi)
-    doi = escape(publication.doi)
+    title = escape(publication.title or publication.doi or "Publication sans titre")
     source_subject = escape(publication.source_subject)
     source_sender = escape(publication.source_sender)
-    url = escape("https://doi.org/" + quote(publication.doi, safe="/"), quote=True)
+    if publication.doi:
+        doi = escape(publication.doi)
+        url = escape(
+            "https://doi.org/" + quote(publication.doi, safe="/"), quote=True
+        )
+        metadata = "<p><strong>DOI :</strong> {}</p>".format(doi)
+    else:
+        url = escape(publication.url or "#", quote=True)
+        metadata = (
+            '<p class="provisional">Référence extraite sans DOI — enrichissement requis.</p>'
+        )
     return (
         "<article>"
         '<h2><a href="{url}">{title}</a></h2>'
-        "<p><strong>DOI :</strong> {doi}</p>"
+        "{metadata}"
         '<p class="source">Signalé dans « {subject} » — {sender}</p>'
         "</article>"
     ).format(
         url=url,
         title=title,
-        doi=doi,
+        metadata=metadata,
         subject=source_subject,
         sender=source_sender,
     )
@@ -52,6 +61,7 @@ def render_digest(publications):
     article {{ background: white; border-radius: 8px; margin: 0 0 18px; padding: 22px; }}
     article p {{ margin: 6px 0; }}
     .source, footer {{ color: #65716d; font-size: 14px; }}
+    .provisional {{ color: #8c6a22; font-size: 14px; }}
     .empty {{ background: white; border-radius: 8px; padding: 22px; }}
     footer {{ margin-top: 30px; }}
   </style>

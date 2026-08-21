@@ -6,10 +6,15 @@ Premier incrément d’une application de veille scientifique autonome et légè
 
 - lecture de newsletters `.eml` ;
 - extraction des DOI depuis le texte et les liens HTML ;
+- découverte des articles sans DOI depuis les titres et liens de suivi des éditeurs pris en charge ;
 - déduplication persistante avec SQLite ;
 - génération d’un digest HTML ;
 - relance idempotente ;
 - aucune dépendance Python externe.
+
+Une référence sans DOI est conservée provisoirement à partir de son titre normalisé.
+L’enrichissement futur remplacera ces informations par les métadonnées canoniques de
+l’éditeur ou de Crossref.
 
 ## Exécution locale
 
@@ -27,6 +32,11 @@ Le programme affiche un rapport JSON exploitable par un script ou le Planificate
 ```bash
 python3 -m unittest discover -s tests -v
 ```
+
+Les tests automatisés utilisent uniquement des messages synthétiques. Les résultats
+agrégés de la validation sur les newsletters réelles sont consignés dans
+[`VALIDATION.md`](VALIDATION.md) ; les courriels eux-mêmes restent locaux et sont
+exclus de Git.
 
 ## Installation sur un DS218
 

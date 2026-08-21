@@ -47,10 +47,153 @@ class NormalizeDoiTests(unittest.TestCase):
 
 
 class PipelineTests(unittest.TestCase):
+    def test_ignores_mdpi_promotional_links(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "inbox"
+            inbox.mkdir()
+            digest = root / "out" / "digest.html"
+            write_email(
+                inbox / "mdpi-promotions.eml",
+                "<mdpi-promotions@example.org>",
+                "Sommaire et annonces",
+                markup=(
+                    '<a href="https://www.mdpi.com/journal/sustainability/special_issues/example">'
+                    "Behavioral pathways for sustainable cities"
+                    "</a>"
+                    '<a href="https://www.mdpi.com/journal/sustainability/events/12345">'
+                    "International conference on sustainable behavior"
+                    "</a>"
+                ),
+            )
+
+            report = run_pipeline(inbox, root / "data" / "veille.sqlite", digest)
+
+            self.assertEqual(report.publications_detected, 0)
+            self.assertEqual(report.publications_new, 0)
+
+    def test_ignores_elsevier_issue_navigation_links(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "inbox"
+            inbox.mkdir()
+            digest = root / "out" / "digest.html"
+            write_email(
+                inbox / "elsevier-navigation.eml",
+                "<elsevier-navigation@example.org>",
+                "Alerte de revue",
+                markup=(
+                    '<a href="https://click.notification.elsevier.com/CL0/'
+                    'https%3A%2F%2Fwww.sciencedirect.com%2Fjournal%2Fexample%2Fvol%2F9%2Fissue%2F8/1/1">'
+                    "Volume 9, Issue 8, 21 August 2026"
+                    "</a>"
+                    '<a href="https://click.notification.elsevier.com/CL0/'
+                    'https%3A%2F%2Fwww.sciencedirect.com%2Fscience%2Fjournal%2Faip%2F12345678/1/1">'
+                    "New Articles in Press, 21 August"
+                    "</a>"
+                    '<a href="https://click.notification.elsevier.com/CL0/'
+                    'https%3A%2F%2Fwww.sciencedirect.com%2Fscience%3F_piikey%3DS123456789/1/1">'
+                    "How social norms shape sustainable household choices"
+                    "</a>"
+                ),
+            )
+
+            report = run_pipeline(inbox, root / "data" / "veille.sqlite", digest)
+
+            self.assertEqual(report.publications_detected, 1)
+            self.assertEqual(report.publications_new, 1)
+            self.assertIn(
+                "How social norms shape sustainable household choices",
+                digest.read_text(encoding="utf-8"),
+            )
+
+    def test_processes_article_title_link_when_newsletter_has_no_doi(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "inbox"
+            inbox.mkdir()
+            digest = root / "out" / "digest.html"
+            write_email(
+                inbox / "apa.eml",
+                "<apa-link@example.org>",
+                "Alerte bibliographique",
+                markup=(
+                    '<a href="https://click.info.apa.org/article/example">'
+                    "How policy messages shape household decisions across multiple settings"
+                    "</a>"
+                ),
+            )
+
+            report = run_pipeline(inbox, root / "data" / "veille.sqlite", digest)
+
+            self.assertEqual(report.publications_new, 1)
+            html = digest.read_text(encoding="utf-8")
+            self.assertIn(
+                "How policy messages shape household decisions across multiple settings", html
+            )
+            self.assertIn("https://click.info.apa.org/article/example", html)
+
+    def test_merges_title_and_doi_links_for_same_article(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "inbox"
+            inbox.mkdir()
+            digest = root / "out" / "digest.html"
+            article_url = "https://www.mdpi.com/2071-1050/18/15/7547"
+            write_email(
+                inbox / "mdpi.eml",
+                "<mdpi-links@example.org>",
+                "Sommaire",
+                markup=(
+                    '<a href="{url}">A behavioral study of household energy decisions</a>'
+                    '<a href="{url}">DOI: 10.3390/su18157547</a>'
+                ).format(url=article_url),
+            )
+
+            report = run_pipeline(inbox, root / "data" / "veille.sqlite", digest)
+
+            self.assertEqual(report.publications_new, 1)
+            html = digest.read_text(encoding="utf-8")
+            self.assertIn("A behavioral study of household energy decisions", html)
+            self.assertIn("10.3390/su18157547", html)
+
+    def test_pairs_ordered_titles_and_dois_when_counts_match(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "inbox"
+            inbox.mkdir()
+            digest = root / "out" / "digest.html"
+            write_email(
+                inbox / "nature.eml",
+                "<nature-order@example.org>",
+                "Sommaire",
+                markup=(
+                    '<a href="https://links.springernature.com/f/a/first">'
+                    "How shared norms influence sustainable household choices"
+                    "</a><p>First Author</p><p>| doi:10.1038/example-001</p>"
+                    '<a href="https://links.springernature.com/f/a/second">'
+                    "Testing behavioral interventions in public organizations"
+                    "</a><p>Second Author</p><p>| doi:10.1038/example-002</p>"
+                ),
+            )
+
+            report = run_pipeline(inbox, root / "data" / "veille.sqlite", digest)
+
+            self.assertEqual(report.publications_new, 2)
+            html = digest.read_text(encoding="utf-8")
+            self.assertIn("How shared norms influence sustainable household choices", html)
+            self.assertIn("10.1038/example-001", html)
+            self.assertIn(
+                "Testing behavioral interventions in public organizations", html
+            )
+            self.assertIn("10.1038/example-002", html)
+
     def test_digest_url_encodes_reserved_doi_characters(self):
         publication = NewPublication(
+            identity="doi:10.1234/a&b=c@d%{e}[f]?",
             doi="10.1234/a&b=c@d%{e}[f]?",
             title="DOI étendu",
+            url=None,
             source_subject="Newsletter",
             source_sender="éditeur@example.org",
         )

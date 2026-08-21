@@ -6,7 +6,7 @@ from email.parser import BytesParser
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import List
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 from .models import ParsedMessage, PublicationCandidate
 
@@ -14,6 +14,23 @@ from .models import ParsedMessage, PublicationCandidate
 DOI_PATTERN = re.compile(r"10\.\d{4,9}/[^\s\"'»›]+", re.IGNORECASE)
 TRAILING_PUNCTUATION = ".,\"'»›"
 BALANCED_DELIMITERS = (("(", ")"), ("[", "]"), ("{", "}"), ("<", ">"))
+ARTICLE_LINK_DOMAINS = {
+    "click.aaas.sciencepubs.org",
+    "click.info.apa.org",
+    "click.notification.elsevier.com",
+    "links.springernature.com",
+    "www.mdpi.com",
+}
+NON_ARTICLE_TEXT = (
+    "cookie",
+    "manage my",
+    "membership",
+    "privacy",
+    "table of contents",
+    "terms and conditions",
+    "unsubscribe",
+    "view this email",
+)
 
 
 class _NewsletterHTMLParser(HTMLParser):
@@ -35,7 +52,9 @@ class _NewsletterHTMLParser(HTMLParser):
     def __init__(self):
         HTMLParser.__init__(self, convert_charrefs=True)
         self._chunks = []  # type: List[str]
-        self.links = []  # type: List[str]
+        self._link_href = None
+        self._link_chunks = []  # type: List[str]
+        self.links = []
 
     def handle_starttag(self, tag, attrs):
         if tag.lower() in self.BLOCK_TAGS:
@@ -43,14 +62,22 @@ class _NewsletterHTMLParser(HTMLParser):
         if tag.lower() == "a":
             for name, value in attrs:
                 if name.lower() == "href" and value:
-                    self.links.append(value)
+                    self._link_href = value
+                    self._link_chunks = []
 
     def handle_endtag(self, tag):
+        if tag.lower() == "a" and self._link_href:
+            text = " ".join("".join(self._link_chunks).split())
+            self.links.append((self._link_href, text))
+            self._link_href = None
+            self._link_chunks = []
         if tag.lower() in self.BLOCK_TAGS:
             self._chunks.append("\n")
 
     def handle_data(self, data):
         self._chunks.append(data)
+        if self._link_href:
+            self._link_chunks.append(data)
 
     def visible_lines(self):
         text = "".join(self._chunks)
@@ -100,8 +127,82 @@ def _extract_from_lines(lines):
     for index, line in enumerate(lines):
         title = _candidate_title(lines, index)
         for doi in _extract_dois(line):
-            candidates.append(PublicationCandidate(doi=doi, title=title))
+            candidates.append(_doi_candidate(doi, title=title))
     return candidates
+
+
+def _normalized_title(title):
+    return " ".join(re.sub(r"[^\w]+", " ", title.casefold()).split())
+
+
+def _publication_title(title):
+    cleaned = " ".join(title.split()).strip()
+    lowered = cleaned.casefold()
+    if len(cleaned) < 20 or len(cleaned) > 300:
+        return None
+    if len(cleaned.split()) < 3:
+        return None
+    if any(fragment in lowered for fragment in NON_ARTICLE_TEXT):
+        return None
+    if cleaned.startswith("©"):
+        return None
+    return cleaned
+
+
+def _canonical_article_url(raw_url):
+    decoded = html.unescape(raw_url.strip())
+    parsed = urlsplit(decoded)
+    if parsed.netloc.casefold() == "click.notification.elsevier.com":
+        segments = parsed.path.split("/")
+        if len(segments) > 2 and segments[1] == "CL0":
+            target = unquote(segments[2])
+            if target.startswith(("http://", "https://")):
+                return target
+    if parsed.netloc.casefold() == "www.mdpi.com":
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+    return decoded
+
+
+def _doi_candidate(doi, title=None, url=None):
+    useful_title = _publication_title(title) if title else None
+    return PublicationCandidate(
+        identity="doi:" + doi,
+        doi=doi,
+        title=useful_title,
+        url=url,
+    )
+
+
+def _link_candidate(title, url):
+    useful_title = _publication_title(title)
+    if useful_title is None:
+        return None
+    parsed = urlsplit(url)
+    if parsed.scheme not in ("http", "https"):
+        return None
+    if parsed.netloc.casefold() not in ARTICLE_LINK_DOMAINS:
+        return None
+    canonical_url = _canonical_article_url(url)
+    canonical = urlsplit(canonical_url)
+    canonical_host = canonical.netloc.casefold()
+    canonical_path = canonical.path.casefold()
+    if canonical_host == "www.mdpi.com" and (
+        "/special_issues/" in canonical_path or "/events/" in canonical_path
+    ):
+        return None
+    if canonical_host == "www.sciencedirect.com" and (
+        canonical_path.startswith("/journal/")
+        or canonical_path.startswith("/science/journal/aip/")
+    ):
+        return None
+    normalized = _normalized_title(useful_title)
+    identity = "title:" + hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return PublicationCandidate(
+        identity=identity,
+        doi=None,
+        title=useful_title,
+        url=canonical_url,
+    )
 
 
 def _text_parts(message, content_type):
@@ -118,16 +219,16 @@ def _text_parts(message, content_type):
 
 
 def _deduplicate_candidates(candidates):
-    by_doi = {}
+    by_identity = {}
     order = []
     for candidate in candidates:
-        existing = by_doi.get(candidate.doi)
+        existing = by_identity.get(candidate.identity)
         if existing is None:
-            by_doi[candidate.doi] = candidate
-            order.append(candidate.doi)
+            by_identity[candidate.identity] = candidate
+            order.append(candidate.identity)
         elif not existing.title and candidate.title:
-            by_doi[candidate.doi] = candidate
-    return tuple(by_doi[doi] for doi in order)
+            by_identity[candidate.identity] = candidate
+    return tuple(by_identity[identity] for identity in order)
 
 
 def parse_message(path):
@@ -144,10 +245,57 @@ def parse_message(path):
     for markup in _text_parts(message, "text/html"):
         parser = _NewsletterHTMLParser()
         parser.feed(markup)
-        candidates.extend(_extract_from_lines(parser.visible_lines()))
-        for link in parser.links:
-            for doi in _extract_dois(link):
-                candidates.append(PublicationCandidate(doi=doi, title=None))
+        line_doi_candidates = list(_extract_from_lines(parser.visible_lines()))
+
+        titles_by_url = {}
+        dois_by_url = {}
+        for link, link_text in parser.links:
+            canonical_url = _canonical_article_url(link)
+            useful_title = _publication_title(link_text)
+            if useful_title:
+                titles_by_url.setdefault(canonical_url, useful_title)
+            linked_dois = _extract_dois(link) + _extract_dois(link_text)
+            if linked_dois:
+                dois_by_url.setdefault(canonical_url, []).extend(linked_dois)
+
+        linked_doi_candidates = []
+        for canonical_url, dois in dois_by_url.items():
+            for doi in dois:
+                linked_doi_candidates.append(
+                    _doi_candidate(
+                        doi,
+                        title=titles_by_url.get(canonical_url),
+                        url=canonical_url,
+                    )
+                )
+
+        unlinked_candidates = []
+        for link, link_text in parser.links:
+            canonical_url = _canonical_article_url(link)
+            if canonical_url not in dois_by_url:
+                candidate = _link_candidate(link_text, link)
+                if candidate is not None:
+                    unlinked_candidates.append(candidate)
+
+        if (
+            not linked_doi_candidates
+            and len(line_doi_candidates) >= 2
+            and len(line_doi_candidates) == len(unlinked_candidates)
+        ):
+            for doi_candidate, link_candidate in zip(
+                line_doi_candidates, unlinked_candidates
+            ):
+                candidates.append(
+                    _doi_candidate(
+                        doi_candidate.doi,
+                        title=link_candidate.title,
+                        url=link_candidate.url,
+                    )
+                )
+        else:
+            candidates.extend(line_doi_candidates)
+            candidates.extend(linked_doi_candidates)
+            candidates.extend(unlinked_candidates)
 
     return ParsedMessage(
         identity=identity,
