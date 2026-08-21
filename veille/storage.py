@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,6 +30,18 @@ CREATE TABLE IF NOT EXISTS message_publications (
     message_identity TEXT NOT NULL REFERENCES messages(identity),
     publication_identity TEXT NOT NULL REFERENCES publications(identity),
     PRIMARY KEY (message_identity, publication_identity)
+);
+
+CREATE TABLE IF NOT EXISTS publication_metadata (
+    publication_identity TEXT PRIMARY KEY REFERENCES publications(identity),
+    status TEXT NOT NULL,
+    title TEXT,
+    abstract TEXT,
+    journal TEXT,
+    published_date TEXT,
+    authors_json TEXT NOT NULL DEFAULT '[]',
+    url TEXT,
+    checked_at TEXT NOT NULL
 );
 """
 
@@ -92,8 +105,7 @@ class Store:
                 PRAGMA foreign_keys = ON;
                 """.format(delivered=delivered_value)
             )
-        else:
-            self.connection.executescript(SCHEMA)
+        self.connection.executescript(SCHEMA)
 
     def close(self):
         self.connection.close()
@@ -106,6 +118,7 @@ class Store:
 
     def add_message(self, message, source_path):
         now = _utc_now()
+        publications_added = 0
         with self.connection:
             self.connection.execute(
                 "INSERT INTO messages(identity, subject, sender, source_path, processed_at) "
@@ -129,6 +142,7 @@ class Store:
                             now,
                         ),
                     )
+                    publications_added += 1
                 elif not exists[0] and candidate.title:
                     self.connection.execute(
                         "UPDATE publications SET title = ? WHERE identity = ?",
@@ -145,17 +159,71 @@ class Store:
                     "VALUES (?, ?)",
                     (message.identity, candidate.identity),
                 )
-    def pending_publications(self):
+        return publications_added
+
+    def publications_to_enrich(self, limit):
+        return tuple(
+            self.connection.execute(
+                "SELECT p.identity, p.doi "
+                "FROM publications p "
+                "LEFT JOIN publication_metadata pm "
+                "ON pm.publication_identity = p.identity "
+                "WHERE p.delivered_at IS NULL AND p.doi IS NOT NULL "
+                "AND pm.publication_identity IS NULL "
+                "ORDER BY p.first_seen_at, p.doi LIMIT ?",
+                (limit,),
+            ).fetchall()
+        )
+
+    def save_metadata(self, identity, metadata):
+        with self.connection:
+            self.connection.execute(
+                "INSERT OR REPLACE INTO publication_metadata("
+                "publication_identity, status, title, abstract, journal, "
+                "published_date, authors_json, url, checked_at"
+                ") VALUES (?, 'success', ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    identity,
+                    metadata.title,
+                    metadata.abstract,
+                    metadata.journal,
+                    metadata.published_date,
+                    json.dumps(metadata.authors, ensure_ascii=False),
+                    metadata.url,
+                    _utc_now(),
+                ),
+            )
+
+    def save_metadata_not_found(self, identity):
+        with self.connection:
+            self.connection.execute(
+                "INSERT OR REPLACE INTO publication_metadata("
+                "publication_identity, status, checked_at"
+                ") VALUES (?, 'not_found', ?)",
+                (identity, _utc_now()),
+            )
+
+    def pending_publications(self, require_metadata=False):
+        metadata_clause = ""
+        if require_metadata:
+            metadata_clause = (
+                "AND (p.doi IS NULL OR pm.publication_identity IS NOT NULL) "
+            )
         rows = self.connection.execute(
-            "SELECT p.identity, p.doi, p.title, p.url, m.subject, m.sender "
+            "SELECT p.identity, p.doi, COALESCE(pm.title, p.title), "
+            "COALESCE(pm.url, p.url), m.subject, m.sender, pm.abstract, "
+            "pm.journal, pm.published_date, pm.authors_json, pm.status "
             "FROM publications p "
+            "LEFT JOIN publication_metadata pm "
+            "ON pm.publication_identity = p.identity "
             "JOIN message_publications mp ON mp.rowid = ("
             "  SELECT MIN(mp2.rowid) FROM message_publications mp2 "
             "  WHERE mp2.publication_identity = p.identity"
             ") "
             "JOIN messages m ON m.identity = mp.message_identity "
             "WHERE p.delivered_at IS NULL "
-            "ORDER BY p.first_seen_at, p.doi"
+            + metadata_clause
+            + "ORDER BY p.first_seen_at, p.doi"
         ).fetchall()
         return tuple(
             NewPublication(
@@ -165,9 +233,19 @@ class Store:
                 url=row[3],
                 source_subject=row[4],
                 source_sender=row[5],
+                abstract=row[6],
+                journal=row[7],
+                published_date=row[8],
+                authors=tuple(json.loads(row[9] or "[]")),
+                metadata_status=row[10],
             )
             for row in rows
         )
+
+    def pending_count(self):
+        return self.connection.execute(
+            "SELECT COUNT(*) FROM publications WHERE delivered_at IS NULL"
+        ).fetchone()[0]
 
     def mark_delivered(self, publications):
         now = _utc_now()

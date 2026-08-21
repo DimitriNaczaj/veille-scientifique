@@ -47,6 +47,33 @@ class NormalizeDoiTests(unittest.TestCase):
 
 
 class PipelineTests(unittest.TestCase):
+    def test_ignores_apa_journal_heading_that_matches_subject(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "inbox"
+            inbox.mkdir()
+            digest = root / "out" / "digest.html"
+            write_email(
+                inbox / "apa.eml",
+                "<apa-heading@example.org>",
+                "APA PsycAlert - Journal of Behavioral Science",
+                markup=(
+                    '<a href="https://click.info.apa.org/journal">'
+                    "Journal of Behavioral Science"
+                    "</a>"
+                    '<a href="https://click.info.apa.org/article">'
+                    "Social norms shape household conservation decisions"
+                    "</a>"
+                ),
+            )
+
+            report = run_pipeline(inbox, root / "data" / "veille.sqlite", digest)
+
+            self.assertEqual(report.publications_detected, 1)
+            html = digest.read_text(encoding="utf-8")
+            self.assertIn("Social norms shape household conservation decisions", html)
+            self.assertNotIn(">Journal of Behavioral Science</a>", html)
+
     def test_ignores_mdpi_promotional_links(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -150,7 +177,12 @@ class PipelineTests(unittest.TestCase):
                 ).format(url=article_url),
             )
 
-            report = run_pipeline(inbox, root / "data" / "veille.sqlite", digest)
+            report = run_pipeline(
+                inbox,
+                root / "data" / "veille.sqlite",
+                digest,
+                deliver_unenriched=True,
+            )
 
             self.assertEqual(report.publications_new, 1)
             html = digest.read_text(encoding="utf-8")
@@ -177,7 +209,12 @@ class PipelineTests(unittest.TestCase):
                 ),
             )
 
-            report = run_pipeline(inbox, root / "data" / "veille.sqlite", digest)
+            report = run_pipeline(
+                inbox,
+                root / "data" / "veille.sqlite",
+                digest,
+                deliver_unenriched=True,
+            )
 
             self.assertEqual(report.publications_new, 2)
             html = digest.read_text(encoding="utf-8")
@@ -236,7 +273,9 @@ class PipelineTests(unittest.TestCase):
                 ),
             )
 
-            first = run_pipeline(inbox, database, digest)
+            first = run_pipeline(
+                inbox, database, digest, deliver_unenriched=True
+            )
             self.assertEqual(first.messages_processed, 2)
             self.assertEqual(first.messages_skipped, 0)
             self.assertEqual(first.publications_detected, 4)
@@ -259,7 +298,9 @@ class PipelineTests(unittest.TestCase):
             self.assertIn("Choice architecture in public services", html)
             self.assertIn("10.9999/mobility-7", html)
 
-            second = run_pipeline(inbox, database, digest)
+            second = run_pipeline(
+                inbox, database, digest, deliver_unenriched=True
+            )
             self.assertEqual(second.messages_processed, 0)
             self.assertEqual(second.messages_skipped, 2)
             self.assertEqual(second.publications_new, 0)
@@ -284,12 +325,17 @@ class PipelineTests(unittest.TestCase):
 
             with patch("veille.pipeline.write_digest", side_effect=OSError("volume plein")):
                 with self.assertRaises(OSError):
-                    run_pipeline(inbox, database, digest)
+                    run_pipeline(
+                        inbox, database, digest, deliver_unenriched=True
+                    )
 
-            retry = run_pipeline(inbox, database, digest)
+            retry = run_pipeline(
+                inbox, database, digest, deliver_unenriched=True
+            )
             self.assertEqual(retry.messages_processed, 0)
             self.assertEqual(retry.messages_skipped, 1)
-            self.assertEqual(retry.publications_new, 1)
+            self.assertEqual(retry.publications_new, 0)
+            self.assertEqual(retry.publications_delivered, 1)
             self.assertIn("10.1234/retry.1", digest.read_text(encoding="utf-8"))
 
             connection = sqlite3.connect(str(database))

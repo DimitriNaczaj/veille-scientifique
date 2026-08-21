@@ -231,11 +231,27 @@ def _deduplicate_candidates(candidates):
     return tuple(by_identity[identity] for identity in order)
 
 
+def _without_newsletter_heading(candidates, subject):
+    prefix = "APA PsycAlert - "
+    if not subject.casefold().startswith(prefix.casefold()):
+        return candidates
+    journal_title = subject[len(prefix) :]
+    normalized_journal = _normalized_title(journal_title)
+    return tuple(
+        candidate
+        for candidate in candidates
+        if candidate.doi
+        or not candidate.title
+        or _normalized_title(candidate.title) != normalized_journal
+    )
+
+
 def parse_message(path):
     raw = Path(path).read_bytes()
     message = BytesParser(policy=policy.default).parsebytes(raw)
     message_id = str(message.get("Message-ID", "")).strip()
     identity = message_id if message_id else "sha256:" + hashlib.sha256(raw).hexdigest()
+    subject = str(message.get("Subject", "(sans objet)"))
 
     candidates = []  # type: List[PublicationCandidate]
     for text in _text_parts(message, "text/plain"):
@@ -299,7 +315,9 @@ def parse_message(path):
 
     return ParsedMessage(
         identity=identity,
-        subject=str(message.get("Subject", "(sans objet)")),
+        subject=subject,
         sender=str(message.get("From", "(expéditeur inconnu)")),
-        publications=_deduplicate_candidates(candidates),
+        publications=_without_newsletter_heading(
+            _deduplicate_candidates(candidates), subject
+        ),
     )

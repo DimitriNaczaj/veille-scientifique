@@ -1,7 +1,10 @@
 import argparse
 import json
+import os
 import sys
 
+from .crossref import CrossrefClient
+from .filtering import BehavioralScienceFilter
 from .pipeline import run_pipeline
 
 
@@ -12,6 +15,27 @@ def build_parser():
     run.add_argument("--inbox", required=True, help="Dossier contenant les fichiers .eml")
     run.add_argument("--database", required=True, help="Chemin de la base SQLite")
     run.add_argument("--output", required=True, help="Chemin du digest HTML")
+    run.add_argument(
+        "--crossref-email",
+        default=os.environ.get("CROSSREF_EMAIL"),
+        help="Adresse de contact transmise à Crossref (ou variable CROSSREF_EMAIL)",
+    )
+    run.add_argument(
+        "--enrichment-limit",
+        type=int,
+        default=100,
+        help="Nombre maximal de DOI enrichis par exécution (défaut : 100)",
+    )
+    run.add_argument(
+        "--no-enrichment",
+        action="store_true",
+        help="Désactiver les appels Crossref pour cette exécution",
+    )
+    run.add_argument(
+        "--no-filter",
+        action="store_true",
+        help="Inclure toutes les références sans préfiltrage thématique",
+    )
     return parser
 
 
@@ -23,7 +47,18 @@ def main(argv=None):
         return 2
 
     try:
-        report = run_pipeline(args.inbox, args.database, args.output)
+        metadata_provider = None
+        if not args.no_enrichment:
+            metadata_provider = CrossrefClient(contact_email=args.crossref_email)
+        relevance_filter = None if args.no_filter else BehavioralScienceFilter()
+        report = run_pipeline(
+            args.inbox,
+            args.database,
+            args.output,
+            metadata_provider=metadata_provider,
+            relevance_filter=relevance_filter,
+            enrichment_limit=args.enrichment_limit,
+        )
     except Exception as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)
         return 1

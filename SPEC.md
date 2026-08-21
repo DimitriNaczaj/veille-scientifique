@@ -6,9 +6,9 @@ Bellegarde reçoit des newsletters d’éditeurs scientifiques contenant plusieu
 
 ## Solution
 
-Le premier incrément est un programme Python sans dépendance externe qui traite des messages `.eml`, identifie les DOI ainsi que les titres liés par les éditeurs pris en charge, conserve un historique SQLite, déduplique les publications et génère un digest HTML des références découvertes pendant l’exécution.
+L’application est un programme Python sans dépendance externe qui traite des messages `.eml`, identifie les DOI ainsi que les titres liés par les éditeurs pris en charge, conserve un historique SQLite, déduplique les publications, enrichit les DOI via Crossref, applique un préfiltrage explicable et génère un digest HTML.
 
-Cet incrément valide le cœur idempotent du système avant d’ajouter l’accès IMAP, l’enrichissement Crossref, le classement par IA et l’envoi SMTP.
+Les deux premiers incréments valident le cœur idempotent, l’enrichissement distant et la réduction de volume avant d’ajouter l’accès IMAP, le classement par IA et l’envoi SMTP.
 
 ## User Stories
 
@@ -21,6 +21,10 @@ Cet incrément valide le cœur idempotent du système avant d’ajouter l’acc�
 7. En tant que consultant Bellegarde, je veux recevoir un digest lisible dans un navigateur ou un client mail, afin de contrôler les références détectées.
 8. En tant qu’exploitant du NAS, je veux connaître le nombre de messages traités, ignorés et de publications nouvelles, afin de vérifier le succès d’une exécution.
 9. En tant qu’exploitant du NAS, je veux un programme compatible Python 3.8 et sans service permanent, afin de l’exécuter sur le DS218 avec le Planificateur de tâches DSM.
+10. En tant que consultant Bellegarde, je veux récupérer le titre canonique, la revue, les auteurs, la date et l’abstract disponibles pour un DOI, afin d’évaluer la publication avec plus de contexte.
+11. En tant qu’exploitant du NAS, je veux mettre les réponses Crossref en cache, afin de ne pas répéter les appels après une reprise ou une nouvelle exécution.
+12. En tant que consultant Bellegarde, je veux un préfiltrage explicable en deux niveaux, afin de réduire le volume envoyé aux étapes coûteuses tout en comprenant chaque sélection.
+13. En tant qu’exploitant du NAS, je veux limiter les appels et interrompre un lot après plusieurs erreurs réseau, afin qu’une indisponibilité externe ne bloque pas le NAS pendant une longue durée.
 
 ## Implementation Decisions
 
@@ -32,6 +36,12 @@ Cet incrément valide le cœur idempotent du système avant d’ajouter l’acc�
 - Sans DOI visible, l’empreinte SHA-256 du titre normalisé constitue une identité provisoire.
 - L’extraction accepte les DOI visibles et ceux contenus dans les attributs `href` du HTML.
 - Les liens d’articles sans DOI sont reconnus uniquement sur une liste explicite de domaines d’éditeurs ; les liens de navigation, événements et numéros spéciaux connus sont ignorés.
+- L’API REST Crossref `/works/{doi}` fournit les métadonnées canoniques disponibles ; les DOI sont encodés dans l’URL et une adresse de contact peut identifier l’application.
+- Les réponses `success` et `not_found` sont mises en cache dans une table SQLite séparée. Les erreurs transitoires restent à reprendre.
+- Un lot enrichit au plus 100 DOI par défaut et refuse les limites hors de l’intervalle 0–1 000. Les références au-delà du plafond restent non livrées jusqu’à un passage ultérieur.
+- Trois erreurs d’enrichissement consécutives ouvrent un coupe-circuit pour l’exécution courante.
+- Une exécution sans accès Crossref conserve les DOI non enrichis dans la file d’attente ; elle ne les marque pas comme livrés.
+- Le préfiltre attribue des points à des concepts comportementaux explicites dans le titre et l’abstract. Un score d’au moins 5 donne la priorité élevée, de 2 à 4 place l’article « À surveiller », et un score inférieur à 2 l’écarte du digest.
 - Le digest d’une exécution contient uniquement les publications jamais vues auparavant.
 - Une publication reste en attente tant qu’un digest complet n’a pas été écrit ; une relance reprend ces publications après une interruption.
 - Le digest est remplacé atomiquement afin de ne jamais exposer un fichier partiellement écrit.
@@ -46,14 +56,15 @@ Cet incrément valide le cœur idempotent du système avant d’ajouter l’acc�
 ## Out of Scope
 
 - Connexion IMAP ou OAuth.
-- Récupération des métadonnées Crossref ou des abstracts.
-- Filtrage thématique et résumé par IA.
+- Récupération d’un abstract absent de Crossref depuis la page de l’éditeur.
+- Second filtrage et résumé par IA.
 - Téléchargement ou lecture de PDF.
 - Envoi du digest par SMTP.
 - Interface web d’administration.
 
 ## Further Notes
 
-- Les titres déduits depuis une newsletter restent indicatifs ; Crossref deviendra la source canonique lors de l’incrément suivant.
+- Les titres déduits depuis une newsletter restent indicatifs ; Crossref est prioritaire lorsqu’une réponse est disponible.
+- La disponibilité des abstracts dans Crossref dépend des dépôts effectués par les éditeurs.
 - Une référence sans DOI reste provisoire jusqu’à son enrichissement par une source canonique.
 - Le traitement doit rester compatible avec une exécution quotidienne planifiée et interrompue entre deux runs.
