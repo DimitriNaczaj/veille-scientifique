@@ -6,6 +6,7 @@ import sys
 from .crossref import CrossrefClient
 from .filtering import BehavioralScienceFilter
 from .mbox_import import run_mbox_import
+from .mail_diagnostics import run_imap_diagnostic, run_smtp_diagnostic
 from .pipeline import run_pipeline
 
 
@@ -53,10 +54,29 @@ def build_parser():
     import_mbox.add_argument(
         "--report", required=True, help="Chemin du rapport JSON"
     )
+    test_imap = subparsers.add_parser(
+        "test-imap",
+        help="Vérifier la connexion IMAP sans modifier les messages",
+    )
+    test_imap.add_argument(
+        "--config", required=True, help="Chemin du fichier INI privé"
+    )
+    test_smtp = subparsers.add_parser(
+        "test-smtp",
+        help="Vérifier SMTP et envoyer éventuellement un mail de contrôle",
+    )
+    test_smtp.add_argument(
+        "--config", required=True, help="Chemin du fichier INI privé"
+    )
+    test_smtp.add_argument(
+        "--send-test",
+        action="store_true",
+        help="Envoyer un mail de contrôle au destinataire configuré",
+    )
     return parser
 
 
-def main(argv=None):
+def main(argv=None, imap_factory=None, smtp_factory=None):
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command is None:
@@ -64,7 +84,17 @@ def main(argv=None):
         return 2
 
     try:
-        if args.command == "import-mbox":
+        if args.command == "test-smtp":
+            report = run_smtp_diagnostic(
+                args.config,
+                send_test=args.send_test,
+                client_factory=smtp_factory,
+            )
+        elif args.command == "test-imap":
+            report = run_imap_diagnostic(
+                args.config, client_factory=imap_factory
+            )
+        elif args.command == "import-mbox":
             report = run_mbox_import(
                 args.source, args.database, args.catalog, args.report
             )
@@ -86,7 +116,7 @@ def main(argv=None):
         return 1
 
     print(json.dumps(report.as_dict(), ensure_ascii=False, sort_keys=True))
-    return 1 if report.errors else 0
+    return 1 if getattr(report, "errors", ()) else 0
 
 
 if __name__ == "__main__":

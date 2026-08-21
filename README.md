@@ -14,6 +14,7 @@ Application de veille scientifique autonome et légère pour Synology DS218.
 - classement en « Priorité élevée » et « À surveiller » ;
 - déduplication persistante avec SQLite ;
 - génération d’un digest HTML ;
+- diagnostic IMAP en lecture seule et diagnostic SMTP avec envoi test optionnel ;
 - relance idempotente ;
 - aucune dépendance Python externe.
 
@@ -73,6 +74,28 @@ Les exports MBOX, catalogues et rapports locaux sont exclus de Git. Ils peuvent
 contenir des titres, des expéditeurs ou des liens personnalisés et doivent rester
 dans un partage NAS à accès restreint.
 
+## Tester la boîte mail
+
+Copier `veille-scientifique.ini.example` vers `veille-scientifique.ini`, renseigner
+les identifiants puis limiter sa lecture au propriétaire :
+
+```bash
+chmod 600 veille-scientifique.ini
+python3 -m veille test-imap --config veille-scientifique.ini
+python3 -m veille test-smtp --config veille-scientifique.ini
+python3 -m veille test-smtp --config veille-scientifique.ini --send-test
+```
+
+`test-imap` ouvre le dossier configuré en lecture seule et renvoie son nombre de
+messages. `test-smtp` vérifie l’authentification sans envoyer de courriel ; l’option
+`--send-test` envoie un unique message au destinataire de contrôle. Les résultats
+sont affichés en JSON sans identifiant secret.
+
+Si la section `[smtp]` est absente, l’application réutilise l’hôte et les
+identifiants IMAP avec le port 587 et STARTTLS. La vérification TLS reste toujours
+active. Sur un système dont Python ne trouve pas les certificats racine, définir
+`SSL_CERT_FILE` vers le bundle CA valide installé sur la machine.
+
 ## Tests
 
 ```bash
@@ -109,7 +132,7 @@ Aucune tâche DSM ne doit être créée avant ces vérifications.
 ## Prochains incréments
 
 1. récupération des abstracts absents de Crossref depuis les pages éditeurs ;
-2. collecte IMAP en lecture seule ;
+2. collecte quotidienne IMAP par UID, en lecture seule ;
 3. second filtre et résumés structurés par IA ;
 4. newsletter HTML Bellegarde et envoi SMTP ;
 5. retours « utile / inutile » et intégration Zotero.

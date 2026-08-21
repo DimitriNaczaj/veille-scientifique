@@ -51,3 +51,24 @@ Cette passe ne contacte ni Crossref ni un modèle d’IA. Elle valide l’ingest
 l’extraction structurelle et l’idempotence, mais pas encore la pertinence métier des
 35 357 références. Le prochain jalon consiste à mesurer le préfiltre sur un
 échantillon annoté avant de lancer l’enrichissement et les résumés à grande échelle.
+
+## Connectivité de la boîte dédiée
+
+Validation réelle effectuée le 22 août 2026 avec la configuration privée de
+`science-digest@bellegarde.co` :
+
+- authentification IMAP TLS réussie sur `mail.infomaniak.com:993` ;
+- ouverture de `INBOX` en lecture seule réussie ;
+- authentification SMTP avec STARTTLS réussie sur `mail.infomaniak.com:587` ;
+- un courriel de contrôle envoyé par la boîte vers elle-même ;
+- `INBOX` est passée de 1 à 2 messages après l’envoi, confirmant la livraison ;
+- aucun mot de passe n’apparaît dans les rapports JSON ou les tests automatisés.
+
+La boîte distante ne contenait que deux messages après ce contrôle, et non les
+quelque 1 300 messages de l’archive historique. Il faudra donc localiser le dossier
+IMAP de destination de ces transferts, ou confirmer qu’ils n’existent que dans
+l’export MBOX, avant de développer la collecte quotidienne.
+
+Un dernier diagnostic d’authentification, sans envoi, a encore validé IMAP et SMTP
+mais a trouvé `INBOX` vide. Ces diagnostics n’altèrent pas les messages ; l’emplacement
+actuel des newsletters historiques reste donc à identifier côté boîte mail.

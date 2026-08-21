@@ -8,7 +8,7 @@ Bellegarde reçoit des newsletters d’éditeurs scientifiques contenant plusieu
 
 L’application est un programme Python sans dépendance externe qui traite des messages `.eml` et importe des historiques MBOX/MBOX.ZIP, identifie les DOI ainsi que les titres liés par les éditeurs pris en charge, conserve un historique SQLite, déduplique les publications, enrichit les DOI via Crossref, applique un préfiltrage explicable et génère un digest HTML.
 
-Les deux premiers incréments valident le cœur idempotent, l’enrichissement distant et la réduction de volume avant d’ajouter l’accès IMAP, le classement par IA et l’envoi SMTP.
+Les incréments réalisés valident le cœur idempotent, l’enrichissement distant, la réduction de volume et la connectivité IMAP/SMTP avant d’ajouter la collecte automatique, le classement par IA et l’envoi du digest.
 
 ## User Stories
 
@@ -28,6 +28,9 @@ Les deux premiers incréments valident le cœur idempotent, l’enrichissement d
 14. En tant que consultant Bellegarde, je veux importer un historique MBOX sans appel externe, afin de constituer le catalogue initial sans coût d’IA.
 15. En tant qu’exploitant du NAS, je veux obtenir un catalogue CSV et un rapport JSON par éditeur, afin de contrôler la couverture avant tout filtrage coûteux.
 16. En tant qu’exploitant du NAS, je veux qu’une archive ZIP et ses messages restent inchangés, afin que l’import soit reproductible et réversible.
+17. En tant qu’exploitant du NAS, je veux tester l’authentification IMAP et ouvrir le dossier en lecture seule, afin de valider la configuration sans modifier les messages.
+18. En tant qu’exploitant du NAS, je veux tester l’authentification SMTP sans envoi puis déclencher explicitement un courriel de contrôle, afin de distinguer connexion et livraison.
+19. En tant qu’exploitant du NAS, je veux que les diagnostics ne révèlent jamais le mot de passe, y compris en cas d’erreur distante.
 
 ## Implementation Decisions
 
@@ -55,6 +58,10 @@ Les deux premiers incréments valident le cœur idempotent, l’enrichissement d
 - Le digest est remplacé atomiquement afin de ne jamais exposer un fichier partiellement écrit.
 - L’interface testée au niveau le plus élevé est l’exécution du pipeline sur un dossier de messages et l’observation de son rapport, de sa base et de son HTML.
 - L’import MBOX est testé à travers son point d’entrée public et sa commande, en observant le rapport, la base, le catalogue et l’intégrité de l’archive.
+- Une commande `test-imap` se connecte avec TLS, s’authentifie et sélectionne le dossier configuré avec l’option lecture seule. Elle n’importe, ne déplace et ne marque aucun message.
+- Une commande `test-smtp` utilise STARTTLS sur le port 587 par défaut. Elle n’envoie rien sans `--send-test` ; cette option expédie un unique message au destinataire de contrôle configuré.
+- La section SMTP est facultative : à défaut, l’hôte et les identifiants IMAP sont réutilisés. La vérification des certificats TLS n’est jamais désactivée.
+- Les diagnostics ont un délai réseau de 15 secondes et leurs erreurs masquent le mot de passe avant affichage.
 
 ## Testing Decisions
 
@@ -62,14 +69,15 @@ Les deux premiers incréments valident le cœur idempotent, l’enrichissement d
 - Les messages de test sont construits avec la bibliothèque standard et écrits dans un dossier temporaire.
 - Les MBOX et ZIP de test sont synthétiques, y compris les métadonnées AppleDouble et les relais éditeurs.
 - Aucun réseau, secret ou service externe n’est requis par la suite de tests.
+- Les clients IMAP et SMTP sont remplacés à leur frontière système pour vérifier la lecture seule, STARTTLS, l’envoi explicite et l’absence de secret dans les sorties.
 
 ## Out of Scope
 
-- Connexion IMAP ou OAuth.
+- Collecte IMAP automatisée par UID ou authentification OAuth.
 - Récupération d’un abstract absent de Crossref depuis la page de l’éditeur.
 - Second filtrage et résumé par IA.
 - Téléchargement ou lecture de PDF.
-- Envoi du digest par SMTP.
+- Envoi automatique du digest par SMTP.
 - Interface web d’administration.
 
 ## Further Notes

@@ -1,0 +1,15 @@
+[imap]
+host = mail.infomaniak.com
+port = 993
+username = science-digest@example.org
+password = CHANGE_ME
+folder = INBOX
+
+[smtp]
+host = mail.infomaniak.com
+port = 587
+security = starttls
+username = science-digest@example.org
+password = CHANGE_ME
+from_address = science-digest@example.org
+test_recipient = science-digest@example.org
