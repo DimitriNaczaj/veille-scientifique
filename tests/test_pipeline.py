@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from veille.mail_parser import normalize_doi, parse_message
 from veille.pipeline import run_pipeline
+from veille.storage import Store
 
 
 def write_email(path, message_id, subject, plain=None, markup=None):
@@ -34,6 +35,12 @@ class NormalizeDoiTests(unittest.TestCase):
                 "10.1002/(SICI)1099-0844(199912)17:4<290::AID-CBF849>3.0.CO;2-P"
             ),
             "10.1002/(sici)1099-0844(199912)17:4<290::aid-cbf849>3.0.co;2-p",
+        )
+
+    def test_preserves_extended_suffix_characters(self):
+        self.assertEqual(
+            normalize_doi("10.1234/a&b=c@d%25{e}[f]?"),
+            "10.1234/a&b=c@d%{e}[f]?",
         )
 
 
@@ -135,6 +142,56 @@ class PipelineTests(unittest.TestCase):
                 connection.close()
             self.assertIsNotNone(delivered_at)
 
+    def test_migrates_database_created_by_initial_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "legacy.sqlite"
+            connection = sqlite3.connect(str(database))
+            try:
+                connection.executescript(
+                    """
+                    CREATE TABLE messages (
+                        identity TEXT PRIMARY KEY,
+                        subject TEXT NOT NULL,
+                        sender TEXT NOT NULL,
+                        source_path TEXT NOT NULL,
+                        processed_at TEXT NOT NULL
+                    );
+                    CREATE TABLE publications (
+                        doi TEXT PRIMARY KEY,
+                        title TEXT,
+                        first_seen_at TEXT NOT NULL
+                    );
+                    CREATE TABLE message_publications (
+                        message_identity TEXT NOT NULL REFERENCES messages(identity),
+                        publication_doi TEXT NOT NULL REFERENCES publications(doi),
+                        PRIMARY KEY (message_identity, publication_doi)
+                    );
+                    INSERT INTO messages VALUES (
+                        'legacy-message', 'Ancienne newsletter', 'éditeur@example.org',
+                        'legacy.eml', '2026-08-21T00:00:00+00:00'
+                    );
+                    INSERT INTO publications VALUES (
+                        '10.1234/legacy.1', 'Article historique',
+                        '2026-08-21T00:00:00+00:00'
+                    );
+                    INSERT INTO message_publications VALUES (
+                        'legacy-message', '10.1234/legacy.1'
+                    );
+                    """
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            store = Store(database)
+            try:
+                pending = store.pending_publications()
+            finally:
+                store.close()
+
+            self.assertEqual(len(pending), 1)
+            self.assertEqual(pending[0].doi, "10.1234/legacy.1")
+
     def test_uses_content_hash_when_message_id_is_missing(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "message.eml"
@@ -147,6 +204,19 @@ class PipelineTests(unittest.TestCase):
             parsed = parse_message(path)
             self.assertTrue(parsed.identity.startswith("sha256:"))
             self.assertEqual(parsed.publications[0].doi, "10.1111/example.1")
+
+    def test_extracts_doi_with_extended_suffix_characters(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "message.eml"
+            write_email(
+                path,
+                "<extended-doi@example.org>",
+                "DOI étendu",
+                plain="Article historique\n10.1234/a&b=c@d%25{e}[f]?",
+            )
+
+            parsed = parse_message(path)
+            self.assertEqual(parsed.publications[0].doi, "10.1234/a&b=c@d%{e}[f]?")
 
 
 if __name__ == "__main__":

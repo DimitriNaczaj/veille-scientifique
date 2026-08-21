@@ -11,8 +11,8 @@ from urllib.parse import unquote
 from .models import ParsedMessage, PublicationCandidate
 
 
-DOI_PATTERN = re.compile(r"10\.\d{4,9}/[-._;()/:A-Z0-9+<>]+", re.IGNORECASE)
-TRAILING_PUNCTUATION = ".,;:!?\"'»›"
+DOI_PATTERN = re.compile(r"10\.\d{4,9}/[^\s\"'»›]+", re.IGNORECASE)
+TRAILING_PUNCTUATION = ".,\"'»›"
 BALANCED_DELIMITERS = (("(", ")"), ("[", "]"), ("{", "}"), ("<", ">"))
 
 
@@ -73,7 +73,15 @@ def normalize_doi(raw):
 
 def _extract_dois(value):
     decoded = html.unescape(unquote(value))
-    return tuple(normalize_doi(match.group(0)) for match in DOI_PATTERN.finditer(decoded))
+    dois = []
+    for match in DOI_PATTERN.finditer(decoded):
+        candidate = match.group(0)
+        if "?" in candidate:
+            doi_part, possible_query = candidate.split("?", 1)
+            if "=" in possible_query or possible_query.lower().startswith("utm_"):
+                candidate = doi_part
+        dois.append(normalize_doi(candidate))
+    return tuple(dois)
 
 
 def _candidate_title(lines, line_index):

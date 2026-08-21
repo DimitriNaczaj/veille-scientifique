@@ -42,6 +42,14 @@ class Store:
         self.connection = sqlite3.connect(str(self.path))
         self.connection.execute("PRAGMA foreign_keys = ON")
         self.connection.executescript(SCHEMA)
+        columns = {
+            row[1] for row in self.connection.execute("PRAGMA table_info(publications)")
+        }
+        if "delivered_at" not in columns:
+            with self.connection:
+                self.connection.execute(
+                    "ALTER TABLE publications ADD COLUMN delivered_at TEXT"
+                )
 
     def close(self):
         self.connection.close()
