@@ -13,6 +13,9 @@ from veille.__main__ import main
 from veille.secret_migration import set_openai_api_key
 
 
+_EXECUTABLE_TEMP_ROOT = Path(__file__).parents[1]
+
+
 class SecretMigrationTests(unittest.TestCase):
     def test_openai_key_setter_replaces_all_old_values_without_exposing_key(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -154,7 +157,9 @@ password = {}
             self.assertEqual(secrets.read_text(encoding="utf-8"), first_secrets)
 
     def test_daily_launcher_loads_legacy_then_prefers_combined_secrets(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory(
+            dir=str(_EXECUTABLE_TEMP_ROOT)
+        ) as executable_directory:
             root = Path(directory)
             output = root / "environment.txt"
             (root / "openai.env").write_text(
@@ -166,7 +171,7 @@ password = {}
                 "SCIENCE_DIGEST_SMTP_PASSWORD=smtp-key\n",
                 encoding="utf-8",
             )
-            python = root / "python"
+            python = Path(executable_directory) / "python"
             python.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             python.chmod(0o700)
             launcher = Path(__file__).parents[1] / "scripts" / "run-daily.sh"
@@ -201,10 +206,11 @@ source "$1"
             )
 
     def test_daily_launcher_detects_python_when_not_explicitly_configured(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory(
+            dir=str(_EXECUTABLE_TEMP_ROOT)
+        ) as executable_directory:
             root = Path(directory)
-            fake_bin = root / "bin"
-            fake_bin.mkdir()
+            fake_bin = Path(executable_directory)
             python = fake_bin / "python3.9"
             output = root / "python-invocation.txt"
             python.write_text(
@@ -240,10 +246,11 @@ source "$1"
             )
 
     def test_daily_launcher_skips_an_incompatible_python_candidate(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory(
+            dir=str(_EXECUTABLE_TEMP_ROOT)
+        ) as executable_directory:
             root = Path(directory)
-            fake_bin = root / "bin"
-            fake_bin.mkdir()
+            fake_bin = Path(executable_directory)
             incompatible = fake_bin / "python3.9"
             compatible = fake_bin / "python3"
             output = root / "python-invocation.txt"
