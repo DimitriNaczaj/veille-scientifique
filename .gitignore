@@ -12,3 +12,4 @@ out/*.json
 veille-scientifique.ini
 openai.env
 secrets.env
+newsletter-design/

@@ -9,7 +9,7 @@ from urllib.parse import quote, urlencode
 
 from veille.mail_parser import normalize_doi, parse_message
 from veille.digest import render_digest
-from veille.models import NewPublication
+from veille.models import NewPublication, PublicationPriority
 from veille.pipeline import run_pipeline
 from veille.storage import Store
 
@@ -323,6 +323,41 @@ class PipelineTests(unittest.TestCase):
             'href="https://doi.org/10.1234/a%26b%3Dc%40d%25%7Be%7D%5Bf%5D%3F"',
             digest,
         )
+
+    def test_digest_uses_adaptive_email_safe_bellegarde_design(self):
+        publication = NewPublication(
+            identity="doi:10.1234/design",
+            doi="10.1234/design",
+            title="How social norms shape sustainable choices",
+            url="https://doi.org/10.1234/design",
+            source_subject="Alerte scientifique",
+            source_sender="éditeur@example.org",
+            abstract="An abstract about social norms.",
+            journal="Journal of Behaviour",
+            published_date="2026-08-22",
+            authors=("Alice Martin", "Bob Dupont"),
+            relevance_reasons=("normes sociales", "intervention"),
+            priority=PublicationPriority.HIGH,
+            summary_fr="Les normes sociales influencent les choix durables.",
+            bellegarde_value="Un résultat directement mobilisable en mission.",
+            applications=("Concevoir un message", "Tester sur le terrain"),
+            themes=("Normes sociales", "Transition écologique"),
+        )
+
+        digest = render_digest((publication,), total_count=2, excluded_count=1)
+
+        self.assertIn('<meta name="color-scheme" content="light dark">', digest)
+        self.assertIn("@media (prefers-color-scheme:dark)", digest)
+        self.assertIn('role="presentation"', digest)
+        self.assertIn("background:#E9E7E5", digest)
+        self.assertIn("background:#1A181C !important", digest)
+        self.assertIn("Veille quotidienne", digest)
+        self.assertIn("Priorité élevée", digest)
+        self.assertIn("Intérêt pour Bellegarde", digest)
+        self.assertIn("Ouvrir l’étude", digest)
+        self.assertIn("Concevoir un message<br>· Tester sur le terrain", digest)
+        self.assertIn('class="chip"', digest)
+        self.assertNotIn("12 rue de la Science", digest)
 
     def test_extracts_html_links_deduplicates_and_is_idempotent(self):
         with tempfile.TemporaryDirectory() as directory:
