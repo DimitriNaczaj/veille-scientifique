@@ -157,6 +157,25 @@ exclus de Git.
 
 ## Installation sur un DS218
 
+### Assistant interactif recommandé
+
+Depuis une session SSH ouverte sur le NAS, télécharger puis lancer l’assistant :
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/DimitriNaczaj/veille-scientifique/main/scripts/install-nas.sh \
+  -o /tmp/install-veille-nas.sh
+bash /tmp/install-veille-nas.sh
+```
+
+L’assistant détecte Python 3.9, télécharge le projet, crée les dossiers, demande le
+mot de passe sans l’afficher, écrit la configuration en mode `600`, exécute les
+tests, vérifie IMAP/SMTP et lance une recette `--no-ai --no-send` dans une base
+séparée. Il ne crée et n’active aucune tâche planifiée. Une relance réutilise le
+dossier et peut conserver la configuration privée existante.
+
+### Installation manuelle
+
 1. Installer le paquet Python 3 depuis le Centre de paquets Synology.
 2. Copier ce dossier dans un partage, par exemple `/volume1/Bellegarde/veille-scientifique`.
 3. Créer les dossiers `inbox`, `data`, `out` et éventuellement `import` s’ils n’existent pas.
