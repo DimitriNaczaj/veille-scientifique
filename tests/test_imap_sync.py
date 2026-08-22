@@ -2,7 +2,7 @@ import io
 import json
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from email.message import EmailMessage
 from pathlib import Path
 
@@ -80,6 +80,13 @@ class EmptyThenNewIMAP(FakeSyncIMAP):
                 return "OK", [b""]
             return "OK", [b"5"]
         return super().uid(command, *args)
+
+
+class ChangedUIDValidityIMAP(FakeSyncIMAP):
+    def response(self, name):
+        if name == "UIDVALIDITY":
+            return "UIDVALIDITY", [b"9999"]
+        return super().response(name)
 
 
 def write_config(path):
@@ -218,6 +225,37 @@ class IMAPSyncCommandTests(unittest.TestCase):
             report = json.loads(second_stdout.getvalue())
             self.assertEqual(report["messages_downloaded"], 1)
             self.assertEqual(report["last_uid"], 5)
+
+    def test_uidvalidity_change_fails_explicitly_instead_of_skipping_mail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "veille.ini"
+            inbox = root / "inbox"
+            database = root / "veille.sqlite"
+            write_config(config)
+            arguments = [
+                "sync-imap",
+                "--config",
+                str(config),
+                "--inbox",
+                str(inbox),
+                "--database",
+                str(database),
+                "--initial-mode",
+                "latest",
+            ]
+
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(main(arguments, imap_factory=FakeSyncIMAP), 0)
+
+            stdout = io.StringIO()
+            with redirect_stderr(stdout):
+                exit_code = main(arguments, imap_factory=ChangedUIDValidityIMAP)
+
+            self.assertEqual(exit_code, 1)
+            report = json.loads(stdout.getvalue())
+            self.assertIn("UIDVALIDITY", report["error"])
+            self.assertEqual(ChangedUIDValidityIMAP.instances[0].fetches, [])
 
 
 if __name__ == "__main__":

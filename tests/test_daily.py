@@ -1,13 +1,16 @@
 import io
 import json
+import mailbox
 import tempfile
 import unittest
 from contextlib import redirect_stdout
+from email.message import EmailMessage
 from pathlib import Path
 
 from tests.test_digest_delivery import FakeSMTP
 from tests.test_imap_sync import FakeSyncIMAP
 from veille.__main__ import main
+from veille.mbox_import import run_mbox_import
 
 
 class StubResponse:
@@ -33,6 +36,17 @@ class StubResponse:
                 }
             }
         ).encode("utf-8")
+
+
+class EmptyIMAP(FakeSyncIMAP):
+    def select(self, folder, readonly=False):
+        self.selection = (folder, readonly)
+        return "OK", [b"0"]
+
+    def uid(self, command, *args):
+        if command == "SEARCH":
+            return "OK", [b""]
+        return super().uid(command, *args)
 
 
 class DailyCommandTests(unittest.TestCase):
@@ -100,6 +114,70 @@ ai_limit = 5
             )
             self.assertTrue((root / "out" / "digest.html").is_file())
             self.assertEqual(len(FakeSMTP.instances[0].messages), 1)
+
+    def test_daily_never_delivers_the_historical_mbox_catalog(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "articles.mbox"
+            archive = mailbox.mbox(str(source), create=True)
+            message = EmailMessage()
+            message["Message-ID"] = "<historical@example.org>"
+            message["From"] = "publisher@example.org"
+            message["Subject"] = "Historical newsletter"
+            message.set_content(
+                "Social norms and household choices\nDOI: 10.1234/history.1"
+            )
+            archive.add(message)
+            archive.flush()
+            archive.close()
+            database = root / "veille.sqlite"
+            run_mbox_import(
+                source,
+                database,
+                root / "catalog.csv",
+                root / "import.json",
+            )
+            config = root / "veille.ini"
+            config.write_text(
+                """[imap]
+host = mail.example.org
+username = science-digest@example.org
+password = super-secret-password
+folder = Articles
+initial_mode = latest
+
+[smtp]
+test_recipient = science-digest@example.org
+
+[digest]
+recipient = consultant@bellegarde.example
+
+[app]
+inbox = {inbox}
+database = {database}
+output = {output}
+""".format(
+                    inbox=root / "inbox",
+                    database=database,
+                    output=root / "digest.html",
+                ),
+                encoding="utf-8",
+            )
+            stdout = io.StringIO()
+
+            with redirect_stdout(stdout):
+                exit_code = main(
+                    ["daily", "--config", str(config), "--no-ai"],
+                    imap_factory=EmptyIMAP,
+                    smtp_factory=FakeSMTP,
+                )
+
+            self.assertEqual(exit_code, 0)
+            report = json.loads(stdout.getvalue())
+            self.assertEqual(report["pipeline"]["publications_delivered"], 0)
+            self.assertEqual(report["pipeline"]["publications_pending"], 0)
+            self.assertFalse(report["email_sent"])
+            self.assertEqual(FakeSMTP.instances, [])
 
 
 if __name__ == "__main__":

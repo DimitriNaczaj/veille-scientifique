@@ -18,6 +18,7 @@ Application de veille scientifique autonome et légère pour Synology DS218.
 - génération d’un digest HTML avec alternative texte et envoi SMTP ;
 - diagnostic IMAP en lecture seule et diagnostic SMTP avec envoi test optionnel ;
 - relance idempotente ;
+- séparation stricte entre le catalogue historique et la file quotidienne livrable ;
 - aucune dépendance Python externe.
 
 Une référence sans DOI est conservée provisoirement à partir de son titre normalisé.
@@ -88,8 +89,10 @@ de tâches DSM. `publications_new` compte les nouvelles identités insérées,
 ## Importer un historique de newsletters
 
 L’import d’un export MBOX est entièrement local : il ne contacte ni Crossref ni un
-service d’IA, ne modifie pas l’archive source et ne marque aucune publication comme
-livrée. Il accepte un fichier MBOX brut ou un ZIP contenant un unique MBOX :
+service d’IA, ne modifie pas l’archive source et classe les publications comme
+historiques non livrables. Elles restent dans le catalogue et participent à la
+déduplication, mais ne peuvent pas être envoyées par `daily`. Il accepte un fichier
+MBOX brut ou un ZIP contenant un unique MBOX :
 
 ```bash
 python3 -m veille import-mbox \
@@ -129,6 +132,12 @@ python3 -m veille test-smtp --config veille-scientifique.ini --send-test
 messages. `test-smtp` vérifie l’authentification sans envoyer de courriel ; l’option
 `--send-test` envoie un unique message au destinataire de contrôle. Les résultats
 sont affichés en JSON sans identifiant secret.
+
+Le destinataire réel `[digest].recipient` doit être différent de
+`[smtp].test_recipient`. Si le serveur change la valeur `UIDVALIDITY` du dossier,
+la synchronisation s’arrête explicitement au lieu de traiter la situation comme une
+première installation ; l’exploitant peut alors contrôler et reconstruire le
+curseur sans perte silencieuse.
 
 Si la section `[smtp]` est absente, l’application réutilise l’hôte et les
 identifiants IMAP avec le port 587 et STARTTLS. La vérification TLS reste toujours

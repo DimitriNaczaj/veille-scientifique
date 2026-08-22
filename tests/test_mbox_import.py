@@ -14,6 +14,7 @@ from veille.mbox_import import run_mbox_import
 from veille.__main__ import main
 from veille.mail_parser import publication_identity_from_title
 from veille.models import ParsedMessage, PublicationCandidate, WorkMetadata
+from veille.pipeline import run_pipeline
 from veille.storage import Store
 
 
@@ -387,9 +388,29 @@ class MboxImportTests(unittest.TestCase):
 
             store = Store(database)
             try:
-                store.mark_delivered(store.pending_publications())
+                self.assertEqual(store.pending_publications(), ())
+                self.assertEqual(store.pending_count(), 0)
             finally:
                 store.close()
+
+            inbox = root / "inbox"
+            inbox.mkdir()
+            repeated_message = EmailMessage()
+            repeated_message["Message-ID"] = "<live-repeat@example.org>"
+            repeated_message["From"] = "publisher@example.org"
+            repeated_message["Subject"] = "Live repeat"
+            repeated_message.set_content(
+                "Social influence and household choices\nDOI: 10.1234/shared.1"
+            )
+            (inbox / "repeat.eml").write_bytes(repeated_message.as_bytes())
+            live = run_pipeline(
+                inbox,
+                database,
+                root / "digest.html",
+                deliver_unenriched=True,
+            )
+            self.assertEqual(live.publications_new, 0)
+            self.assertEqual(live.publications_delivered, 0)
 
             repeated = run_mbox_import(source, database, catalog, report_path)
 

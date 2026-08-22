@@ -4,7 +4,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .mail_parser import publication_identity_from_title
-from .models import AIAnalysis, NewPublication, PublicationCandidate
+from .models import (
+    AIAnalysis,
+    NewPublication,
+    PublicationCandidate,
+    PublicationPriority,
+    WorkMetadata,
+)
 
 
 SCHEMA = """
@@ -24,6 +30,7 @@ CREATE TABLE IF NOT EXISTS publications (
     title TEXT,
     url TEXT,
     first_seen_at TEXT NOT NULL,
+    delivery_eligible INTEGER NOT NULL DEFAULT 1,
     delivered_at TEXT
 );
 
@@ -75,7 +82,7 @@ CREATE TABLE IF NOT EXISTS publication_ai_assessments (
     PRIMARY KEY (publication_identity, model, prompt_version)
 );
 """
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 def _utc_now():
@@ -140,6 +147,27 @@ class Store:
                 """.format(delivered=delivered_value)
             )
         self.connection.executescript(SCHEMA)
+        columns = {
+            row[1] for row in self.connection.execute("PRAGMA table_info(publications)")
+        }
+        if "delivery_eligible" not in columns:
+            self.connection.execute(
+                "ALTER TABLE publications ADD COLUMN delivery_eligible "
+                "INTEGER NOT NULL DEFAULT 1"
+            )
+            self.connection.execute(
+                "UPDATE publications SET delivery_eligible = 0 "
+                "WHERE EXISTS ("
+                " SELECT 1 FROM message_publications mp "
+                " JOIN messages m ON m.identity = mp.message_identity "
+                " WHERE mp.publication_identity = publications.identity"
+                ") AND NOT EXISTS ("
+                " SELECT 1 FROM message_publications mp "
+                " JOIN messages m ON m.identity = mp.message_identity "
+                " WHERE mp.publication_identity = publications.identity "
+                " AND m.source_path NOT GLOB '*#[0-9][0-9][0-9][0-9][0-9][0-9]'"
+                ")"
+            )
         if schema_version < SCHEMA_VERSION:
             self._backfill_title_aliases()
             self.connection.execute("PRAGMA user_version = {}".format(SCHEMA_VERSION))
@@ -227,13 +255,23 @@ class Store:
                 (account, folder, uidvalidity, last_uid, _utc_now()),
             )
 
+    def imap_uidvalidities(self, account, folder):
+        return tuple(
+            row[0]
+            for row in self.connection.execute(
+                "SELECT uidvalidity FROM imap_sync_state "
+                "WHERE account = ? AND folder = ? ORDER BY updated_at",
+                (account, folder),
+            ).fetchall()
+        )
+
     def has_message(self, identity):
         row = self.connection.execute(
             "SELECT 1 FROM messages WHERE identity = ?", (identity,)
         ).fetchone()
         return row is not None
 
-    def add_message(self, message, source_path):
+    def add_message(self, message, source_path, delivery_eligible=True):
         now = _utc_now()
         publications_added = 0
         with self.connection:
@@ -250,14 +288,15 @@ class Store:
                 ).fetchone()
                 if exists is None:
                     self.connection.execute(
-                        "INSERT INTO publications(identity, doi, title, url, first_seen_at) "
-                        "VALUES (?, ?, ?, ?, ?)",
+                        "INSERT INTO publications(identity, doi, title, url, first_seen_at, "
+                        "delivery_eligible) VALUES (?, ?, ?, ?, ?, ?)",
                         (
                             publication_identity,
                             candidate.doi,
                             candidate.title,
                             candidate.url,
                             now,
+                            1 if delivery_eligible else 0,
                         ),
                     )
                     publications_added += 1
@@ -309,7 +348,7 @@ class Store:
 
     def _merge_publication(self, provisional_identity, candidate):
         provisional = self.connection.execute(
-            "SELECT title, url, first_seen_at, delivered_at "
+            "SELECT title, url, first_seen_at, delivered_at, delivery_eligible "
             "FROM publications WHERE identity = ?",
             (provisional_identity,),
         ).fetchone()
@@ -317,33 +356,35 @@ class Store:
             return
 
         canonical = self.connection.execute(
-            "SELECT title, url, first_seen_at, delivered_at "
+            "SELECT title, url, first_seen_at, delivered_at, delivery_eligible "
             "FROM publications WHERE identity = ?",
             (candidate.identity,),
         ).fetchone()
         if canonical is None:
             self.connection.execute(
                 "INSERT INTO publications("
-                "identity, doi, title, url, first_seen_at, delivered_at"
-                ") VALUES (?, ?, ?, ?, ?, ?)",
+                "identity, doi, title, url, first_seen_at, delivery_eligible, delivered_at"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
                     candidate.identity,
                     candidate.doi,
                     candidate.title or provisional[0],
                     candidate.url or provisional[1],
                     provisional[2],
+                    provisional[4],
                     provisional[3],
                 ),
             )
         else:
             self.connection.execute(
                 "UPDATE publications SET title = ?, url = ?, first_seen_at = ?, "
-                "delivered_at = ? WHERE identity = ?",
+                "delivered_at = ?, delivery_eligible = ? WHERE identity = ?",
                 (
                     canonical[0] or candidate.title or provisional[0],
                     canonical[1] or candidate.url or provisional[1],
                     min(canonical[2], provisional[2]),
                     canonical[3] or provisional[3],
+                    max(canonical[4], provisional[4]),
                     candidate.identity,
                 ),
             )
@@ -412,15 +453,45 @@ class Store:
                 "FROM publications p "
                 "LEFT JOIN publication_metadata pm "
                 "ON pm.publication_identity = p.identity "
-                "WHERE p.delivered_at IS NULL "
+                "WHERE p.delivery_eligible = 1 AND p.delivered_at IS NULL "
                 "AND (p.doi IS NOT NULL OR p.url IS NOT NULL) "
-                "AND pm.publication_identity IS NULL "
+                "AND (pm.publication_identity IS NULL "
+                "OR pm.status = 'crossref_incomplete' "
+                "OR pm.status = 'crossref_not_found' "
+                "OR (pm.status = 'success' AND pm.abstract IS NULL)) "
                 "ORDER BY p.first_seen_at, p.identity LIMIT ?",
                 (limit,),
             ).fetchall()
         )
 
-    def save_metadata(self, identity, metadata):
+    def load_metadata(self, identity):
+        row = self.connection.execute(
+            "SELECT title, abstract, journal, published_date, authors_json, url "
+            "FROM publication_metadata WHERE publication_identity = ?",
+            (identity,),
+        ).fetchone()
+        if row is None:
+            return None
+        return WorkMetadata(
+            title=row[0],
+            abstract=row[1],
+            journal=row[2],
+            published_date=row[3],
+            authors=tuple(json.loads(row[4] or "[]")),
+            url=row[5],
+        )
+
+    def metadata_status(self, identity):
+        row = self.connection.execute(
+            "SELECT status FROM publication_metadata WHERE publication_identity = ?",
+            (identity,),
+        ).fetchone()
+        return row[0] if row is not None else None
+
+    def save_metadata(self, identity, metadata, status=None):
+        status = status or ("success" if metadata.abstract else "incomplete")
+        if status not in ("success", "incomplete", "crossref_incomplete"):
+            raise ValueError("Statut de métadonnées invalide.")
         with self.connection:
             publication = self.connection.execute(
                 "SELECT doi, title, url FROM publications WHERE identity = ?",
@@ -448,9 +519,10 @@ class Store:
                 "INSERT OR REPLACE INTO publication_metadata("
                 "publication_identity, status, title, abstract, journal, "
                 "published_date, authors_json, url, checked_at"
-                ") VALUES (?, 'success', ?, ?, ?, ?, ?, ?, ?)",
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     identity,
+                    status,
                     metadata.title,
                     metadata.abstract,
                     metadata.journal,
@@ -461,13 +533,15 @@ class Store:
                 ),
             )
 
-    def save_metadata_not_found(self, identity):
+    def save_metadata_not_found(self, identity, status="not_found"):
+        if status not in ("not_found", "crossref_not_found"):
+            raise ValueError("Statut de métadonnées introuvables invalide.")
         with self.connection:
             self.connection.execute(
                 "INSERT OR REPLACE INTO publication_metadata("
                 "publication_identity, status, checked_at"
-                ") VALUES (?, 'not_found', ?)",
-                (identity, _utc_now()),
+                ") VALUES (?, ?, ?)",
+                (identity, status, _utc_now()),
             )
 
     def load_ai_assessment(self, identity, model, prompt_version):
@@ -482,7 +556,7 @@ class Store:
             return None
         return AIAnalysis(
             relevant=bool(row[0]),
-            priority=row[1],
+            priority=PublicationPriority(row[1]),
             summary_fr=row[2],
             bellegarde_value=row[3],
             applications=tuple(json.loads(row[4])),
@@ -506,7 +580,7 @@ class Store:
                     analysis.model,
                     analysis.prompt_version,
                     1 if analysis.relevant else 0,
-                    analysis.priority,
+                    analysis.priority.value,
                     analysis.summary_fr,
                     analysis.bellegarde_value,
                     json.dumps(analysis.applications, ensure_ascii=False),
@@ -520,10 +594,12 @@ class Store:
     def _load_publications(self, require_metadata, pending_only):
         conditions = []
         if pending_only:
-            conditions.append("p.delivered_at IS NULL")
+            conditions.append("p.delivery_eligible = 1 AND p.delivered_at IS NULL")
         if require_metadata:
             conditions.append(
-                "(p.doi IS NULL OR pm.publication_identity IS NOT NULL)"
+                "(p.doi IS NULL OR (pm.publication_identity IS NOT NULL "
+                "AND pm.status NOT IN ('crossref_incomplete', "
+                "'crossref_not_found')))"
             )
         where_clause = ""
         if conditions:
@@ -568,7 +644,8 @@ class Store:
 
     def pending_count(self):
         return self.connection.execute(
-            "SELECT COUNT(*) FROM publications WHERE delivered_at IS NULL"
+            "SELECT COUNT(*) FROM publications "
+            "WHERE delivery_eligible = 1 AND delivered_at IS NULL"
         ).fetchone()[0]
 
     def publication_count(self):

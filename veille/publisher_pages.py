@@ -192,20 +192,25 @@ class MetadataCascade:
         self.publisher_client = publisher_client
 
     def fetch_by_doi(self, doi):
-        primary = (
+        primary = self.fetch_primary_by_doi(doi)
+        if primary is not None and primary.abstract:
+            return primary
+        return self.fetch_publisher_fallback(doi, primary)
+
+    def fetch_primary_by_doi(self, doi):
+        return (
             self.crossref_client.fetch_by_doi(doi)
             if self.crossref_client is not None
             else None
         )
-        if primary is not None and primary.abstract:
-            return primary
-        url = primary.url if primary is not None and primary.url else "https://doi.org/" + quote(doi, safe="/")
-        try:
-            secondary = self.publisher_client.fetch_by_url(url)
-        except PublisherPageError:
-            if primary is not None:
-                return primary
-            raise
+
+    def fetch_publisher_fallback(self, doi, primary=None):
+        url = (
+            primary.url
+            if primary is not None and primary.url
+            else "https://doi.org/" + quote(doi, safe="/")
+        )
+        secondary = self.publisher_client.fetch_by_url(url)
         return _merge_metadata(primary, secondary)
 
     def fetch_by_url(self, url):

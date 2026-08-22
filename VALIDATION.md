@@ -46,6 +46,8 @@ Validation effectuée le 22 août 2026 sur l’archive locale d’environ un an 
 - 106 messages Taylor & Francis et 41 messages Wiley couverts ;
 - l’archive ZIP source est restée inchangée ;
 - une seconde exécution ignore les 1 358 messages déjà connus et conserve les mêmes statistiques de couverture.
+- les 35 357 références historiques restent cataloguées mais sont exclues de la file
+  livrable ; un test `daily` sur une base MBOX préremplie confirme zéro livraison.
 
 Cette passe ne contacte ni Crossref ni un modèle d’IA. Elle valide l’ingestion,
 l’extraction structurelle et l’idempotence, mais pas encore la pertinence métier des
@@ -83,6 +85,11 @@ seules frontières réseau :
 - absence d’envoi lorsque le digest est vide ;
 - conservation des publications en attente après un échec SMTP ;
 - commande `daily` validée de bout en bout.
+- arrêt explicite lors d’un changement de `UIDVALIDITY`, reprise d’une panne
+  transitoire du repli éditeur et séparation des destinataires test/réel.
+
+La suite automatisée compte 55 tests, tous réussis sous Python 3.14 ; le code cible
+Python 3.8+ et n’utilise que la bibliothèque standard.
 
 La couche OpenAI n’a pas été appelée avec un compte réel, faute de clé API fournie.
 La validation garantit le contrat HTTP et le schéma de réponse, mais la qualité du

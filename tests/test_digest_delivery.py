@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from veille.delivery import SMTPDigestSender
+from veille.delivery import SMTPDigestSender, load_digest_delivery_settings
 from veille.models import NewPublication, PublicationPriority
 
 
@@ -118,6 +118,27 @@ class DigestDeliveryTests(unittest.TestCase):
 
             self.assertFalse(sender.sent)
             self.assertEqual(FakeSMTP.instances, [])
+
+    def test_refuses_real_recipient_equal_to_smtp_test_recipient(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "veille.ini"
+            config.write_text(
+                """[imap]
+host = mail.example.org
+username = science-digest@example.org
+password = super-secret-password
+
+[smtp]
+test_recipient = consultant@bellegarde.example
+
+[digest]
+recipient = Consultant@Bellegarde.Example
+""",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "destinataire de test"):
+                load_digest_delivery_settings(config)
 
 
 if __name__ == "__main__":

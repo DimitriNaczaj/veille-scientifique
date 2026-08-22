@@ -3,7 +3,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from .mail_diagnostics import create_tls_context
-from .models import AIAnalysis
+from .models import AIAnalysis, PublicationPriority
 
 
 class OpenAIAnalysisError(RuntimeError):
@@ -125,7 +125,7 @@ class OpenAIAnalyzer:
         usage = response_payload.get("usage") or {}
         return AIAnalysis(
             relevant=result["relevant"],
-            priority=result["priority"],
+            priority=PublicationPriority(result["priority"]),
             summary_fr=result["summary_fr"].strip(),
             bellegarde_value=result["bellegarde_value"].strip(),
             applications=tuple(value.strip() for value in result["applications"]),

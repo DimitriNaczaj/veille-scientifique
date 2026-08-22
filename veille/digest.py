@@ -1,10 +1,8 @@
-import os
-import tempfile
 from datetime import datetime, timezone
 from html import escape
-from pathlib import Path
 from urllib.parse import quote
 
+from .atomic import atomic_open
 from .models import PublicationPriority
 
 
@@ -186,33 +184,11 @@ def render_digest(publications, total_count=None, excluded_count=0):
 
 
 def write_digest(path, publications, total_count=None, excluded_count=0):
-    destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=str(destination.parent),
-            prefix="." + destination.name + ".",
-            suffix=".tmp",
-            delete=False,
-        ) as temporary:
-            temporary_path = Path(temporary.name)
-            temporary.write(
-                render_digest(
-                    publications,
-                    total_count=total_count,
-                    excluded_count=excluded_count,
-                )
+    with atomic_open(path, "w", encoding="utf-8") as stream:
+        stream.write(
+            render_digest(
+                publications,
+                total_count=total_count,
+                excluded_count=excluded_count,
             )
-            temporary.flush()
-            os.fsync(temporary.fileno())
-        os.replace(str(temporary_path), str(destination))
-    except Exception:
-        if temporary_path is not None:
-            try:
-                temporary_path.unlink()
-            except FileNotFoundError:
-                pass
-        raise
+        )

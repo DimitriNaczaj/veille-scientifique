@@ -1,7 +1,6 @@
-import os
-import tempfile
 from pathlib import Path
 
+from .atomic import atomic_open
 from .mail_diagnostics import (
     MailDiagnosticError,
     _safe_error,
@@ -39,28 +38,8 @@ def _message_bytes(data):
 
 
 def _write_message(path, payload):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="wb",
-            dir=str(path.parent),
-            prefix="." + path.name + ".",
-            suffix=".tmp",
-            delete=False,
-        ) as temporary:
-            temporary_path = Path(temporary.name)
-            temporary.write(payload)
-            temporary.flush()
-            os.fsync(temporary.fileno())
-        os.replace(str(temporary_path), str(path))
-    except Exception:
-        if temporary_path is not None:
-            try:
-                temporary_path.unlink()
-            except FileNotFoundError:
-                pass
-        raise
+    with atomic_open(path, "wb") as stream:
+        stream.write(payload)
 
 
 def run_imap_sync(
@@ -84,6 +63,7 @@ def run_imap_sync(
         raise ValueError("Le mode initial IMAP doit être all ou latest.")
     settings = load_imap_settings(config_path)
     inbox_path = Path(inbox)
+    inbox_path.mkdir(parents=True, exist_ok=True)
     client = None
     store = Store(database)
     downloaded = 0
@@ -103,6 +83,18 @@ def run_imap_sync(
         stored_uid = store.imap_last_uid(
             settings.username, settings.folder, uidvalidity
         )
+        previous_uidvalidities = store.imap_uidvalidities(
+            settings.username, settings.folder
+        )
+        if stored_uid is None and previous_uidvalidities:
+            raise RuntimeError(
+                "UIDVALIDITY a changé pour le dossier {} ({} → {}). "
+                "Synchronisation interrompue pour éviter de perdre des messages.".format(
+                    settings.folder,
+                    previous_uidvalidities[-1],
+                    uidvalidity,
+                )
+            )
         first_sync = stored_uid is None
         last_uid = stored_uid or 0
         criterion = "ALL" if last_uid == 0 else "UID {}:*".format(last_uid + 1)

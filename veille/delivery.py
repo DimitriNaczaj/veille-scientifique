@@ -29,6 +29,10 @@ def load_digest_delivery_settings(path):
     if not recipient:
         raise ValueError("Option digest.recipient absente de la configuration.")
     smtp = load_smtp_settings(path)
+    if recipient.casefold() == smtp.test_recipient.casefold():
+        raise ValueError(
+            "Le destinataire du digest doit être distinct du destinataire de test SMTP."
+        )
     return DigestDeliverySettings(
         recipient=recipient,
         from_address=(

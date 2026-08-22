@@ -10,7 +10,7 @@ from veille.crossref import CrossrefClient
 from veille.filtering import BehavioralScienceFilter
 from veille.publisher_pages import MetadataCascade, PublisherPageClient
 from veille.__main__ import main
-from veille.models import AIAnalysis, WorkMetadata
+from veille.models import AIAnalysis, PublicationPriority, WorkMetadata
 from veille.pipeline import run_pipeline
 
 
@@ -57,7 +57,7 @@ class StaticAIAnalyzer:
         self.calls.append(publication.identity)
         return AIAnalysis(
             relevant=True,
-            priority="high",
+            priority=PublicationPriority.HIGH,
             summary_fr=(
                 "Une expérimentation randomisée montre que les normes sociales "
                 "réduisent durablement la consommation d’énergie."
@@ -236,6 +236,132 @@ class CrossrefClientTests(unittest.TestCase):
 
 
 class EnrichmentPipelineTests(unittest.TestCase):
+    def test_retries_publisher_after_crossref_not_found_without_repeating_crossref(self):
+        crossref_calls = []
+        publisher_calls = []
+
+        class CrossrefNotFound:
+            def fetch_by_doi(self, doi):
+                crossref_calls.append(doi)
+                return None
+
+        class PublisherRetry:
+            def fetch_by_url(self, url):
+                publisher_calls.append(url)
+                if len(publisher_calls) == 1:
+                    from veille.publisher_pages import PublisherPageError
+
+                    raise PublisherPageError("éditeur temporairement indisponible")
+                return WorkMetadata(
+                    title="Social norms and household choices",
+                    abstract="A field experiment tests household choices.",
+                    journal="Behavioral Science",
+                    published_date="2026-08-21",
+                    authors=(),
+                    url=url,
+                )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "inbox"
+            inbox.mkdir()
+            database = root / "veille.sqlite"
+            write_email(
+                inbox / "newsletter.eml",
+                "<not-found-retry@example.org>",
+                "Nouvelles publications",
+                plain="Behavioral publication\nDOI: 10.1234/not-found.1",
+            )
+            provider = MetadataCascade(CrossrefNotFound(), PublisherRetry())
+
+            first = run_pipeline(
+                inbox,
+                database,
+                root / "first.html",
+                metadata_provider=provider,
+                relevance_filter=BehavioralScienceFilter(),
+            )
+            second = run_pipeline(
+                inbox,
+                database,
+                root / "second.html",
+                metadata_provider=provider,
+                relevance_filter=BehavioralScienceFilter(),
+            )
+
+            self.assertEqual(first.publications_delivered, 0)
+            self.assertEqual(second.publications_delivered, 1)
+            self.assertEqual(crossref_calls, ["10.1234/not-found.1"])
+            self.assertEqual(len(publisher_calls), 2)
+
+    def test_retries_publisher_fallback_after_transient_failure(self):
+        crossref_calls = []
+
+        class CrossrefWithoutAbstract:
+            def fetch_by_doi(self, doi):
+                crossref_calls.append(doi)
+                return WorkMetadata(
+                    title="Behavioral spillovers from household feedback",
+                    abstract=None,
+                    journal="Behavioral Science",
+                    published_date="2026-08-21",
+                    authors=(),
+                    url="https://publisher.example.org/article/42",
+                )
+
+        attempts = []
+
+        class PublisherRetry:
+            def fetch_by_url(self, url):
+                attempts.append(url)
+                if len(attempts) == 1:
+                    from veille.publisher_pages import PublisherPageError
+
+                    raise PublisherPageError("éditeur temporairement indisponible")
+                return WorkMetadata(
+                    title="Behavioral spillovers from household feedback",
+                    abstract="A field experiment tests durable behavioral spillovers.",
+                    journal="Behavioral Science",
+                    published_date="2026-08-21",
+                    authors=(),
+                    url=url,
+                )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "inbox"
+            inbox.mkdir()
+            database = root / "veille.sqlite"
+            write_email(
+                inbox / "newsletter.eml",
+                "<publisher-retry@example.org>",
+                "Nouvelles publications",
+                plain="Behavioral publication\nDOI: 10.1234/retry.1",
+            )
+            provider = MetadataCascade(CrossrefWithoutAbstract(), PublisherRetry())
+
+            first = run_pipeline(
+                inbox,
+                database,
+                root / "first.html",
+                metadata_provider=provider,
+                relevance_filter=BehavioralScienceFilter(),
+            )
+            second = run_pipeline(
+                inbox,
+                database,
+                root / "second.html",
+                metadata_provider=provider,
+                relevance_filter=BehavioralScienceFilter(),
+            )
+
+            self.assertEqual(first.publications_delivered, 0)
+            self.assertEqual(first.publications_pending, 1)
+            self.assertEqual(second.publications_enriched, 1)
+            self.assertEqual(second.publications_delivered, 1)
+            self.assertEqual(len(attempts), 2)
+            self.assertEqual(crossref_calls, ["10.1234/retry.1"])
+
     def test_delivery_failure_keeps_publication_pending_for_retry(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

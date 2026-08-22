@@ -45,7 +45,7 @@ class WorkMetadata:
 @dataclass(frozen=True)
 class AIAnalysis:
     relevant: bool
-    priority: str
+    priority: PublicationPriority
     summary_fr: str
     bellegarde_value: str
     applications: Tuple[str, ...]

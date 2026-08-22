@@ -49,7 +49,7 @@ Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque front
 
 - Python 3.8+ et bibliothèque standard uniquement.
 - Une commande `run` traite tous les fichiers `.eml` d’un dossier, sans les modifier.
-- Une commande `import-mbox` lit un MBOX brut ou un ZIP contenant un MBOX, sans modifier la source, sans appel réseau et sans marquer les références comme livrées.
+- Une commande `import-mbox` lit un MBOX brut ou un ZIP contenant un MBOX, sans modifier la source ni appel réseau, et marque les références comme historiques non livrables tout en les conservant pour la déduplication.
 - Les chemins de la source, de la base, du catalogue et du rapport doivent être distincts ; toute collision est refusée avant ouverture de la base.
 - Les fichiers techniques AppleDouble placés dans `__MACOSX` sont ignorés lors de la sélection du MBOX dans un ZIP.
 - SQLite constitue la source persistante pour les messages, publications et relations entre eux.
@@ -61,7 +61,7 @@ Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque front
 - Les liens d’articles sans DOI sont reconnus uniquement sur une liste explicite de domaines d’éditeurs, incluant les relais Wiley et Taylor & Francis ; les liens de navigation, événements et numéros spéciaux connus sont ignorés.
 - Les anciens relais AWS de Nature sont décodés uniquement lorsqu’ils révèlent une URL canonique `nature.com/articles/...`, afin de ne pas conserver un lien de suivi personnalisé.
 - L’API REST Crossref `/works/{doi}` fournit les métadonnées canoniques disponibles ; les DOI sont encodés dans l’URL et une adresse de contact peut identifier l’application.
-- Les réponses `success` et `not_found` sont mises en cache dans une table SQLite séparée. Les erreurs transitoires restent à reprendre.
+- Les réponses enrichies, incomplètes et `not_found` sont mises en cache dans une table SQLite séparée. Un ancien cache Crossref sans abstract est repris une fois par le repli éditeur ; les erreurs transitoires ne remplacent pas ce cache et restent à reprendre.
 - Un lot enrichit au plus 100 DOI par défaut et refuse les limites hors de l’intervalle 0–1 000. Les références au-delà du plafond restent non livrées jusqu’à un passage ultérieur.
 - Trois erreurs d’enrichissement consécutives ouvrent un coupe-circuit pour l’exécution courante.
 - Une exécution sans accès Crossref conserve les DOI non enrichis dans la file d’attente ; elle ne les marque pas comme livrés.
@@ -76,8 +76,8 @@ Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque front
 - La section SMTP est facultative : à défaut, l’hôte et les identifiants IMAP sont réutilisés. La vérification des certificats TLS n’est jamais désactivée.
 - Les diagnostics ont un délai réseau de 15 secondes et leurs erreurs masquent le mot de passe avant affichage.
 - La synchronisation IMAP s’appuie sur `UIDVALIDITY` et les UID, télécharge le message RFC822 dans un fichier déterministe écrit atomiquement et sélectionne toujours le dossier en lecture seule.
-- Un état de synchronisation SQLite sépare chaque compte, dossier et `UIDVALIDITY`. Un plafond borne le nombre de téléchargements ; seuls les UID supérieurs au curseur validé sont considérés lors des passages suivants.
-- Le premier passage peut télécharger tout le dossier ou seulement une fenêtre récente configurable ; dans les deux cas, le curseur n’avance qu’après les écritures réussies.
+- Un état de synchronisation SQLite sépare chaque compte, dossier et `UIDVALIDITY`. Un plafond borne le nombre de téléchargements ; seuls les UID supérieurs au curseur validé sont considérés lors des passages suivants. Si `UIDVALIDITY` change pour un compte et un dossier connus, la commande échoue explicitement avant tout téléchargement.
+- Le premier passage peut télécharger tout le dossier ou positionner le curseur sur le dernier UID sans télécharger l’historique ; dans les deux cas, le curseur n’avance qu’après les écritures réussies.
 - Crossref reste la source canonique des métadonnées DOI. Une page éditeur n’est consultée que lorsqu’un abstract manque et qu’une URL HTTP(S) exploitable existe.
 - L’extracteur de page lit uniquement les métadonnées HTML standard (`citation_abstract`, Dublin Core, OpenGraph, description et JSON-LD), limite la taille téléchargée et n’essaie pas de contourner un paywall.
 - Le préfiltre local reste le premier niveau. L’IA ne reçoit que le titre, l’abstract et les métadonnées bibliographiques des références candidates, jamais le courriel complet ni les identifiants de boîte.

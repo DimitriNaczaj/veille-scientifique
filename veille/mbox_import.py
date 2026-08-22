@@ -10,6 +10,7 @@ from email import policy
 from email.utils import parseaddr
 from pathlib import Path
 
+from .atomic import atomic_open
 from .mail_parser import parse_message_bytes
 from .models import ImportReport
 from .storage import Store
@@ -46,26 +47,8 @@ def _validate_distinct_paths(paths):
 
 
 def _write_text_atomically(path, writer, newline=None):
-    destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            newline=newline,
-            prefix=destination.name + ".",
-            suffix=".tmp",
-            dir=str(destination.parent),
-            delete=False,
-        ) as stream:
-            temporary = Path(stream.name)
-            writer(stream)
-        temporary.replace(destination)
-    except Exception:
-        if temporary is not None and temporary.exists():
-            temporary.unlink()
-        raise
+    with atomic_open(path, "w", encoding="utf-8", newline=newline) as stream:
+        writer(stream)
 
 
 def _sender_domain(sender):
@@ -190,7 +173,11 @@ def run_mbox_import(source, database, catalog, report_output):
                         if store.has_message(message.identity):
                             messages_skipped += 1
                             continue
-                        publications_new += store.add_message(message, source_reference)
+                        publications_new += store.add_message(
+                            message,
+                            source_reference,
+                            delivery_eligible=False,
+                        )
                         messages_processed += 1
                     except Exception as error:
                         errors.append("message {}: {}".format(index, error))

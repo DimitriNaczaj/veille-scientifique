@@ -12,12 +12,7 @@ MAX_AI_LIMIT = 1000
 
 
 def _apply_ai_analysis(publication, analysis):
-    priorities = {
-        "high": PublicationPriority.HIGH,
-        "watch": PublicationPriority.WATCH,
-        "excluded": PublicationPriority.EXCLUDED,
-    }
-    priority = priorities.get(analysis.priority, PublicationPriority.EXCLUDED)
+    priority = analysis.priority
     if not analysis.relevant:
         priority = PublicationPriority.EXCLUDED
     return replace(
@@ -97,7 +92,35 @@ def run_pipeline(
                 reference = doi or url
                 try:
                     if doi is not None:
-                        metadata = metadata_provider.fetch_by_doi(doi)
+                        cached = store.load_metadata(identity)
+                        cached_status = store.metadata_status(identity)
+                        if hasattr(metadata_provider, "fetch_publisher_fallback"):
+                            primary = (
+                                None
+                                if cached_status == "crossref_not_found"
+                                else cached
+                            )
+                            if primary is None and cached_status != "crossref_not_found":
+                                primary = metadata_provider.fetch_primary_by_doi(doi)
+                                if primary is None:
+                                    store.save_metadata_not_found(
+                                        identity,
+                                        status="crossref_not_found",
+                                    )
+                                elif not primary.abstract:
+                                    store.save_metadata(
+                                        identity,
+                                        primary,
+                                        status="crossref_incomplete",
+                                    )
+                            if primary is not None and primary.abstract:
+                                metadata = primary
+                            else:
+                                metadata = metadata_provider.fetch_publisher_fallback(
+                                    doi, primary
+                                )
+                        else:
+                            metadata = metadata_provider.fetch_by_doi(doi)
                     elif hasattr(metadata_provider, "fetch_by_url"):
                         metadata = metadata_provider.fetch_by_url(url)
                     else:

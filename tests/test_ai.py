@@ -2,7 +2,7 @@ import json
 import unittest
 
 from veille.ai import OpenAIAnalyzer
-from veille.models import NewPublication
+from veille.models import NewPublication, PublicationPriority
 
 
 class StubResponse:
@@ -70,7 +70,7 @@ class OpenAIAnalyzerTests(unittest.TestCase):
         analysis = analyzer.analyze(publication)
 
         self.assertTrue(analysis.relevant)
-        self.assertEqual(analysis.priority, "high")
+        self.assertIs(analysis.priority, PublicationPriority.HIGH)
         self.assertEqual(analysis.input_tokens, 321)
         self.assertEqual(analysis.output_tokens, 87)
         self.assertEqual(analysis.model, "gpt-test")
