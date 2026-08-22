@@ -113,7 +113,7 @@ Les exports MBOX, catalogues et rapports locaux sont exclus de Git. Ils peuvent
 contenir des titres, des expéditeurs ou des liens personnalisés et doivent rester
 dans un partage NAS à accès restreint.
 
-L’inventaire des 1 358 newsletters, des plateformes et des 67 revues observées est
+L’inventaire des 1 358 newsletters, des plateformes et des 68 titres observés est
 disponible dans [`docs/newsletter-inventory.md`](docs/newsletter-inventory.md).
 
 ## Tester la boîte mail

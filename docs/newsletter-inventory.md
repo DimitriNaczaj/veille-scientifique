@@ -1,7 +1,7 @@
 # Inventaire des newsletters scientifiques
 
 Inventaire établi le 22 août 2026 à partir des 1 358 messages du dossier IMAP
-`Articles` et de l’archive MBOX locale. Il recense 8 canaux d’envoi et 67 titres
+`Articles` et de l’archive MBOX locale. Il recense 8 canaux d’envoi et 68 titres
 de revues ou newsletters identifiables. Les nombres entre parenthèses sont les
 messages observés sur environ un an ; ils servent à prioriser la migration et ne
 constituent pas une mesure de pertinence.
