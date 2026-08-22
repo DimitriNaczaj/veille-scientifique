@@ -7,11 +7,73 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 from veille.__main__ import main
+from veille.secret_migration import set_openai_api_key
 
 
 class SecretMigrationTests(unittest.TestCase):
+    def test_openai_key_setter_replaces_all_old_values_without_exposing_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            secrets = Path(directory) / "secrets.env"
+            secrets.write_text(
+                "SCIENCE_DIGEST_MAIL_PASSWORD=mail-key\n"
+                "OPENAI_API_KEY=malformed-command-text\n"
+                "OPENAI_API_KEY=duplicate-old-key\n",
+                encoding="utf-8",
+            )
+            api_key = "sk-proj-" + "A" * 40
+
+            report = set_openai_api_key(
+                secrets, reader=lambda prompt: api_key
+            )
+
+            content = secrets.read_text(encoding="utf-8")
+            self.assertTrue(report.updated)
+            self.assertEqual(content.count("OPENAI_API_KEY="), 1)
+            self.assertIn("SCIENCE_DIGEST_MAIL_PASSWORD=mail-key\n", content)
+            self.assertIn(
+                "OPENAI_API_KEY={}\n".format(shlex.quote(api_key)), content
+            )
+            self.assertNotIn("malformed-command-text", content)
+            self.assertNotIn("duplicate-old-key", content)
+            self.assertNotIn(api_key, json.dumps(report.as_dict()))
+            self.assertEqual(os.stat(secrets).st_mode & 0o777, 0o600)
+
+    def test_openai_key_setter_is_exposed_through_masked_cli(self):
+        with tempfile.TemporaryDirectory() as directory:
+            secrets = Path(directory) / "secrets.env"
+            api_key = "sk-proj-" + "B" * 40
+            stdout = io.StringIO()
+
+            with patch(
+                "veille.secret_migration.getpass.getpass", return_value=api_key
+            ), redirect_stdout(stdout):
+                exit_code = main(
+                    ["set-openai-key", "--secrets", str(secrets)]
+                )
+
+            self.assertEqual(exit_code, 0)
+            report = json.loads(stdout.getvalue())
+            self.assertEqual(report["service"], "openai-key-setup")
+            self.assertTrue(report["updated"])
+            self.assertNotIn(api_key, stdout.getvalue())
+
+    def test_openai_key_setter_rejects_multiline_paste_without_changing_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            secrets = Path(directory) / "secrets.env"
+            original = "SCIENCE_DIGEST_MAIL_PASSWORD=mail-key\n"
+            secrets.write_text(original, encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "Clé OpenAI invalide"):
+                set_openai_api_key(
+                    secrets,
+                    reader=lambda prompt: "sk-proj-valid-looking\rprintf commands",
+                )
+
+            self.assertEqual(secrets.read_text(encoding="utf-8"), original)
+
     def test_extracts_inline_password_preserves_other_secrets_and_is_idempotent(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

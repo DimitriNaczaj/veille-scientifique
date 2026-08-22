@@ -10,7 +10,7 @@ from .imap_sync import run_imap_sync
 from .mbox_import import run_mbox_import
 from .mail_diagnostics import run_imap_diagnostic, run_smtp_diagnostic
 from .pipeline import run_pipeline
-from .secret_migration import migrate_inline_mail_password
+from .secret_migration import migrate_inline_mail_password, set_openai_api_key
 
 
 def build_parser():
@@ -105,6 +105,13 @@ def build_parser():
     migrate_secrets.add_argument(
         "--secrets", required=True, help="Chemin du fichier secrets.env"
     )
+    set_openai_key = subparsers.add_parser(
+        "set-openai-key",
+        help="Enregistrer une clé OpenAI par saisie masquée et validée",
+    )
+    set_openai_key.add_argument(
+        "--secrets", required=True, help="Chemin du fichier secrets.env"
+    )
     daily = subparsers.add_parser(
         "daily",
         help="Synchroniser, analyser, générer et envoyer la veille quotidienne",
@@ -180,6 +187,8 @@ def main(
             )
         elif args.command == "migrate-secrets":
             report = migrate_inline_mail_password(args.config, args.secrets)
+        elif args.command == "set-openai-key":
+            report = set_openai_api_key(args.secrets)
         elif args.command == "import-mbox":
             report = run_mbox_import(
                 args.source, args.database, args.catalog, args.report

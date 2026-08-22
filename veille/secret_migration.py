@@ -1,4 +1,5 @@
 import configparser
+import getpass
 import os
 import re
 import shlex
@@ -26,6 +27,22 @@ class SecretMigrationReport:
             "config": self.config,
             "secrets": self.secrets,
             "migrated": self.migrated,
+            "errors": [],
+        }
+
+
+@dataclass(frozen=True)
+class OpenAIKeyUpdateReport:
+    secrets: str
+    updated: bool = True
+    errors: tuple = ()
+
+    def as_dict(self):
+        return {
+            "service": "openai-key-setup",
+            "status": "ok",
+            "secrets": self.secrets,
+            "updated": self.updated,
             "errors": [],
         }
 
@@ -85,6 +102,33 @@ def _secrets_with_mail_passwords(content, passwords):
     for environment_name, password in passwords.items():
         retained.append("{}={}".format(environment_name, shlex.quote(password)))
     return "\n".join(retained) + "\n"
+
+
+def _valid_openai_api_key(value):
+    return (
+        len(value) >= 20
+        and value.startswith("sk-")
+        and all(33 <= ord(character) <= 126 for character in value)
+    )
+
+
+def set_openai_api_key(secrets_path, reader=None):
+    secrets_path = Path(secrets_path)
+    read_secret = reader or getpass.getpass
+    api_key = read_secret("Collez la nouvelle clé OpenAI : ")
+    if not _valid_openai_api_key(api_key):
+        raise ValueError(
+            "Clé OpenAI invalide : une seule ligne commençant par sk- est attendue."
+        )
+    content = secrets_path.read_text(encoding="utf-8") if secrets_path.exists() else ""
+    retained = [
+        line
+        for line in content.splitlines()
+        if not re.match(r"^\s*OPENAI_API_KEY=", line)
+    ]
+    retained.append("OPENAI_API_KEY={}".format(shlex.quote(api_key)))
+    _atomic_write(secrets_path, "\n".join(retained) + "\n")
+    return OpenAIKeyUpdateReport(secrets=str(secrets_path))
 
 
 def migrate_inline_mail_password(config_path, secrets_path):

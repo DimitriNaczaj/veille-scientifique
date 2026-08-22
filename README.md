@@ -228,10 +228,14 @@ umask 077
 read -rsp "Mot de passe mail : " MAIL_PASSWORD; printf '\n'
 printf 'SCIENCE_DIGEST_MAIL_PASSWORD=%q\n' "$MAIL_PASSWORD" > secrets.env
 unset MAIL_PASSWORD
-read -rsp "Clé OpenAI : " OPENAI_KEY; printf '\n'
-printf 'OPENAI_API_KEY=%q\n' "$OPENAI_KEY" >> secrets.env
-unset OPENAI_KEY
 chmod 600 secrets.env
+```
+
+La clé OpenAI doit être enregistrée avec la commande dédiée. Elle remplace toute
+ancienne valeur, refuse les collages multilignes et n’affiche jamais la clé :
+
+```bash
+python3 -m veille set-openai-key --secrets secrets.env
 ```
 
 Si le serveur SMTP utilise un compte ou un mot de passe distinct, ajouter
