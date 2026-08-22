@@ -11,3 +11,4 @@ out/*.json
 *.mbox.zip
 veille-scientifique.ini
 openai.env
+secrets.env

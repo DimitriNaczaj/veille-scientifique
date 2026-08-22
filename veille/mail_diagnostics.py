@@ -1,5 +1,6 @@
 import configparser
 import imaplib
+import os
 import socket
 import smtplib
 import ssl
@@ -127,6 +128,23 @@ def _required(config, section, option):
     return value
 
 
+def _secret(config, section, option):
+    environment_option = option + "_env"
+    environment_name = config.get(
+        section, environment_option, fallback=""
+    ).strip()
+    if environment_name:
+        value = os.environ.get(environment_name, "").strip()
+        if not value:
+            raise ValueError(
+                "Variable d’environnement {} absente ou vide pour {}.{}.".format(
+                    environment_name, section, option
+                )
+            )
+        return value
+    return _required(config, section, option)
+
+
 def _port(config, section, default):
     raw = config.get(section, "port", fallback=str(default)).strip()
     try:
@@ -163,7 +181,7 @@ def load_imap_settings(path):
         host=_required(config, "imap", "host"),
         port=_port(config, "imap", 993),
         username=_required(config, "imap", "username"),
-        password=_required(config, "imap", "password"),
+        password=_secret(config, "imap", "password"),
         folder=config.get("imap", "folder", fallback="INBOX").strip() or "INBOX",
     )
 
@@ -172,7 +190,7 @@ def load_smtp_settings(path):
     config = _load_config(path)
     imap_host = _required(config, "imap", "host")
     imap_username = _required(config, "imap", "username")
-    imap_password = _required(config, "imap", "password")
+    imap_password = _secret(config, "imap", "password")
     if config.has_section("smtp"):
         host = config.get("smtp", "host", fallback=imap_host).strip() or imap_host
         port = _port(config, "smtp", 587)
@@ -180,7 +198,12 @@ def load_smtp_settings(path):
             config.get("smtp", "username", fallback=imap_username).strip()
             or imap_username
         )
-        password = config.get("smtp", "password", fallback=imap_password).strip()
+        if config.has_option("smtp", "password") or config.has_option(
+            "smtp", "password_env"
+        ):
+            password = _secret(config, "smtp", "password")
+        else:
+            password = imap_password
         security = config.get("smtp", "security", fallback="starttls").strip().lower()
         from_address = (
             config.get("smtp", "from_address", fallback=username).strip() or username

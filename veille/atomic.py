@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 @contextmanager
-def atomic_open(path, mode, encoding=None, newline=None):
+def atomic_open(path, mode, encoding=None, newline=None, permissions=None):
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = None
@@ -22,6 +22,8 @@ def atomic_open(path, mode, encoding=None, newline=None):
     try:
         with tempfile.NamedTemporaryFile(**options) as stream:
             temporary_path = Path(stream.name)
+            if permissions is not None:
+                os.fchmod(stream.fileno(), permissions)
             yield stream
             stream.flush()
             os.fsync(stream.fileno())

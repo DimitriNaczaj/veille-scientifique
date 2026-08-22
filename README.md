@@ -28,11 +28,11 @@ L’application ne télécharge pas les PDF et ne contourne aucun paywall.
 
 ## Exécution quotidienne
 
-Après avoir adapté `veille-scientifique.ini.example`, une seule commande réalise le
-parcours complet :
+Après avoir adapté `veille-scientifique.ini.example` et chargé les secrets dans
+l’environnement, une seule commande réalise le parcours complet :
 
 ```bash
-OPENAI_API_KEY=sk-... python3 -m veille daily \
+SCIENCE_DIGEST_MAIL_PASSWORD=... OPENAI_API_KEY=... python3 -m veille daily \
   --config veille-scientifique.ini
 ```
 
@@ -119,10 +119,12 @@ disponible dans [`docs/newsletter-inventory.md`](docs/newsletter-inventory.md).
 ## Tester la boîte mail
 
 Copier `veille-scientifique.ini.example` vers `veille-scientifique.ini`, renseigner
-les identifiants puis limiter sa lecture au propriétaire :
+les identifiants non secrets, définir le mot de passe dans l’environnement puis
+limiter la lecture de l’INI au propriétaire :
 
 ```bash
 chmod 600 veille-scientifique.ini
+export SCIENCE_DIGEST_MAIL_PASSWORD='...'
 python3 -m veille test-imap --config veille-scientifique.ini
 python3 -m veille test-smtp --config veille-scientifique.ini
 python3 -m veille test-smtp --config veille-scientifique.ini --send-test
@@ -169,10 +171,11 @@ bash /tmp/install-veille-nas.sh
 ```
 
 L’assistant détecte Python 3.9, télécharge le projet, crée les dossiers, demande le
-mot de passe sans l’afficher, écrit la configuration en mode `600`, exécute les
+mot de passe sans l’afficher, l’isole dans `secrets.env` en mode `600`, exécute les
 tests, vérifie IMAP/SMTP et lance une recette `--no-ai --no-send` dans une base
-séparée. Il ne crée et n’active aucune tâche planifiée. Une relance réutilise le
-dossier et peut conserver la configuration privée existante.
+séparée. L’INI ne contient alors que le nom de la variable d’environnement. Il ne
+crée et n’active aucune tâche planifiée. Une relance réutilise le dossier et peut
+conserver la configuration privée existante.
 
 ### Installation manuelle
 
@@ -180,7 +183,7 @@ dossier et peut conserver la configuration privée existante.
 2. Copier ce dossier dans un partage, par exemple `/volume1/Bellegarde/veille-scientifique`.
 3. Créer les dossiers `inbox`, `data`, `out` et éventuellement `import` s’ils n’existent pas.
 4. Copier l’exemple vers `veille-scientifique.ini`, renseigner les adresses et passer le fichier en mode `600`.
-5. Placer éventuellement `OPENAI_API_KEY=...` dans un fichier `openai.env` en mode `600` à la racine du projet ; il est exclu de Git.
+5. Créer `secrets.env` avec la procédure de saisie masquée ci-dessous, puis le passer en mode `600` ; il est exclu de Git.
 6. Dans **Panneau de configuration → Planificateur de tâches**, créer une tâche quotidienne exécutée par un utilisateur dédié.
 7. Utiliser le lanceur fourni avec des chemins absolus :
 
@@ -195,6 +198,52 @@ Si Python ne trouve pas les certificats système, définir `SSL_CERT_FILE` avec 
 chemin du bundle CA installé sur le NAS ; ne jamais désactiver la vérification TLS.
 Aucune tâche DSM ne doit être activée avant un passage réussi avec `--no-send`, puis
 un envoi test SMTP. La base de production doit être sauvegardée avec le partage.
+
+### Protection des secrets sur le NAS
+
+Les mots de passe et clés API ne peuvent pas être stockés sous forme de hash :
+contrairement à une application qui vérifie un mot de passe utilisateur, le client
+IMAP/SMTP et l’API OpenAI doivent retrouver la valeur originale pour
+s’authentifier. Le compromis autonome retenu consiste à les sortir de l’INI et de
+Git, à les placer dans `secrets.env` lisible uniquement par le compte d’exécution
+(`chmod 600`) et à les injecter au processus au lancement. Un chiffrement
+nécessiterait une clé de déchiffrement disponible automatiquement sur le NAS et
+déplacerait donc le secret sans supprimer ce point de confiance.
+
+Pour migrer atomiquement une ancienne installation dont les mots de passe IMAP et,
+le cas échéant, SMTP figurent encore dans l’INI :
+
+```bash
+python3 -m veille migrate-secrets \
+  --config veille-scientifique.ini \
+  --secrets secrets.env
+```
+
+Pour créer le fichier manuellement sans inscrire les secrets dans l’historique du
+terminal, utiliser Bash et des saisies masquées ; `%q` protège les caractères
+spéciaux avant que le lanceur ne source le fichier :
+
+```bash
+umask 077
+read -rsp "Mot de passe mail : " MAIL_PASSWORD; printf '\n'
+printf 'SCIENCE_DIGEST_MAIL_PASSWORD=%q\n' "$MAIL_PASSWORD" > secrets.env
+unset MAIL_PASSWORD
+read -rsp "Clé OpenAI : " OPENAI_KEY; printf '\n'
+printf 'OPENAI_API_KEY=%q\n' "$OPENAI_KEY" >> secrets.env
+unset OPENAI_KEY
+chmod 600 secrets.env
+```
+
+Si le serveur SMTP utilise un compte ou un mot de passe distinct, ajouter
+`username` et `password_env = SCIENCE_DIGEST_SMTP_PASSWORD` dans `[smtp]`, puis
+ajouter ce secret avec la même méthode :
+
+```bash
+read -rsp "Mot de passe SMTP : " SMTP_PASSWORD; printf '\n'
+printf 'SCIENCE_DIGEST_SMTP_PASSWORD=%q\n' "$SMTP_PASSWORD" >> secrets.env
+unset SMTP_PASSWORD
+chmod 600 secrets.env
+```
 
 ## Prochains incréments
 

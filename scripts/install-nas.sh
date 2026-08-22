@@ -300,6 +300,7 @@ say "Projet installé depuis GitHub."
 
 stage "Configuration privée"
 CONFIG_PATH="$INSTALL_ROOT/veille-scientifique.ini"
+SECRETS_PATH="$INSTALL_ROOT/secrets.env"
 REUSE_CONFIG=false
 if [[ -f "$CONFIG_PATH" ]] && confirm "Réutiliser la configuration privée existante ?"; then
   REUSE_CONFIG=true
@@ -327,7 +328,7 @@ if [[ "$REUSE_CONFIG" == false ]]; then
   {
     printf '%s\n' '[imap]'
     printf '%s\n' 'host = mail.infomaniak.com' 'port = 993'
-    printf 'username = %s\npassword = %s\n' "$MAIL_USERNAME" "$MAIL_PASSWORD"
+    printf 'username = %s\npassword_env = SCIENCE_DIGEST_MAIL_PASSWORD\n' "$MAIL_USERNAME"
     printf '%s\n\n' 'folder = Articles' 'initial_mode = latest'
     printf '%s\n' '[smtp]' 'host = mail.infomaniak.com' 'port = 587' 'security = starttls'
     printf 'from_address = %s\ntest_recipient = %s\n\n' "$MAIL_USERNAME" "$MAIL_USERNAME"
@@ -343,13 +344,34 @@ if [[ "$REUSE_CONFIG" == false ]]; then
   } > "$CONFIG_TMP"
   chmod 600 "$CONFIG_TMP"
   mv "$CONFIG_TMP" "$CONFIG_PATH"
+  SECRETS_TMP="$SECRETS_PATH.tmp.$$"
+  printf 'SCIENCE_DIGEST_MAIL_PASSWORD=%q\n' "$MAIL_PASSWORD" > "$SECRETS_TMP"
+  chmod 600 "$SECRETS_TMP"
+  mv "$SECRETS_TMP" "$SECRETS_PATH"
+  SCIENCE_DIGEST_MAIL_PASSWORD="$MAIL_PASSWORD"
+  export SCIENCE_DIGEST_MAIL_PASSWORD
   write_env MAIL_USERNAME "$MAIL_USERNAME"
   write_env DIGEST_RECIPIENT "$DIGEST_RECIPIENT"
   chmod 600 "$ENV_FILE"
   unset MAIL_PASSWORD
 fi
 chmod 600 "$CONFIG_PATH"
-say "Configuration écrite avec permissions 600. Aucun secret n’est envoyé à GitHub."
+if [[ "$REUSE_CONFIG" == true ]]; then
+  (
+    cd "$INSTALL_ROOT"
+    "$PYTHON_BIN" -m veille migrate-secrets \
+      --config "$CONFIG_PATH" \
+      --secrets "$SECRETS_PATH"
+  )
+fi
+[[ ! -f "$SECRETS_PATH" ]] || chmod 600 "$SECRETS_PATH"
+if [[ -f "$SECRETS_PATH" ]]; then
+  # shellcheck disable=SC1090
+  source "$SECRETS_PATH"
+  export SCIENCE_DIGEST_MAIL_PASSWORD SCIENCE_DIGEST_SMTP_PASSWORD \
+    OPENAI_API_KEY 2>/dev/null || true
+fi
+say "Configuration et secrets privés écrits en mode 600. Aucun secret n’est envoyé à GitHub."
 
 stage "Tests automatisés"
 say "Exécution des tests synthétiques, sans réseau ni envoi."

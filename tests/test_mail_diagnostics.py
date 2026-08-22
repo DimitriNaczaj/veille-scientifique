@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 from veille.__main__ import main
 
@@ -82,6 +83,19 @@ host = mail.example.org
 port = 993
 username = science-digest@example.org
 password = super-secret-password
+folder = INBOX
+""",
+        encoding="utf-8",
+    )
+
+
+def write_environment_config(path):
+    Path(path).write_text(
+        """[imap]
+host = mail.example.org
+port = 993
+username = science-digest@example.org
+password_env = SCIENCE_DIGEST_MAIL_PASSWORD
 folder = INBOX
 """,
         encoding="utf-8",
@@ -169,6 +183,64 @@ class MailDiagnosticCommandTests(unittest.TestCase):
             self.assertIn("Test de connexion", client.messages[0]["Subject"])
             self.assertTrue(client.closed)
             self.assertNotIn("super-secret-password", stdout.getvalue())
+
+    def test_imap_password_can_be_loaded_from_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "veille.ini"
+            write_environment_config(config)
+            stdout = io.StringIO()
+
+            with patch.dict(
+                "os.environ",
+                {"SCIENCE_DIGEST_MAIL_PASSWORD": "environment-secret"},
+                clear=False,
+            ), redirect_stdout(stdout):
+                exit_code = main(
+                    ["test-imap", "--config", str(config)],
+                    imap_factory=FakeIMAP,
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(
+                FakeIMAP.instances[0].login_credentials,
+                ("science-digest@example.org", "environment-secret"),
+            )
+            self.assertNotIn("environment-secret", stdout.getvalue())
+
+    def test_smtp_reuses_imap_password_from_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "veille.ini"
+            write_environment_config(config)
+            stdout = io.StringIO()
+
+            with patch.dict(
+                "os.environ",
+                {"SCIENCE_DIGEST_MAIL_PASSWORD": "environment-secret"},
+                clear=False,
+            ), redirect_stdout(stdout):
+                exit_code = main(
+                    ["test-smtp", "--config", str(config)],
+                    smtp_factory=FakeSMTP,
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(
+                FakeSMTP.instances[0].login_credentials,
+                ("science-digest@example.org", "environment-secret"),
+            )
+
+    def test_missing_password_environment_variable_is_explicit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "veille.ini"
+            write_environment_config(config)
+            stderr = io.StringIO()
+
+            with patch.dict("os.environ", {}, clear=True), redirect_stderr(stderr):
+                exit_code = main(["test-imap", "--config", str(config)])
+
+            self.assertEqual(exit_code, 1)
+            self.assertIn("SCIENCE_DIGEST_MAIL_PASSWORD", stderr.getvalue())
+            self.assertIn("absente ou vide", stderr.getvalue())
 
     def test_connection_error_never_exposes_password(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -2,7 +2,7 @@
 host = mail.infomaniak.com
 port = 993
 username = science-digest@example.org
-password = CHANGE_ME
+password_env = SCIENCE_DIGEST_MAIL_PASSWORD
 folder = Articles
 # Premier lancement quotidien : ignorer l’historique déjà présent.
 initial_mode = latest
@@ -11,7 +11,10 @@ initial_mode = latest
 host = mail.infomaniak.com
 port = 587
 security = starttls
-# username et password sont repris de [imap] s’ils sont omis.
+# username et password/password_env sont repris de [imap] s’ils sont omis.
+# Si le compte SMTP est distinct, décommenter et adapter les deux lignes suivantes :
+# username = smtp-science-digest@example.org
+# password_env = SCIENCE_DIGEST_SMTP_PASSWORD
 from_address = science-digest@example.org
 test_recipient = science-digest@example.org
 

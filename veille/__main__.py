@@ -10,6 +10,7 @@ from .imap_sync import run_imap_sync
 from .mbox_import import run_mbox_import
 from .mail_diagnostics import run_imap_diagnostic, run_smtp_diagnostic
 from .pipeline import run_pipeline
+from .secret_migration import migrate_inline_mail_password
 
 
 def build_parser():
@@ -94,6 +95,16 @@ def build_parser():
         default="all",
         help="Au premier passage, tout télécharger ou ignorer l’historique",
     )
+    migrate_secrets = subparsers.add_parser(
+        "migrate-secrets",
+        help="Extraire un ancien mot de passe mail inline vers un fichier privé",
+    )
+    migrate_secrets.add_argument(
+        "--config", required=True, help="Chemin du fichier INI privé"
+    )
+    migrate_secrets.add_argument(
+        "--secrets", required=True, help="Chemin du fichier secrets.env"
+    )
     daily = subparsers.add_parser(
         "daily",
         help="Synchroniser, analyser, générer et envoyer la veille quotidienne",
@@ -167,6 +178,8 @@ def main(
             report = run_imap_diagnostic(
                 args.config, client_factory=imap_factory
             )
+        elif args.command == "migrate-secrets":
+            report = migrate_inline_mail_password(args.config, args.secrets)
         elif args.command == "import-mbox":
             report = run_mbox_import(
                 args.source, args.database, args.catalog, args.report
