@@ -352,12 +352,67 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("background:#E9E7E5", digest)
         self.assertIn("background:#1A181C !important", digest)
         self.assertIn("Veille quotidienne", digest)
-        self.assertIn("Priorité élevée", digest)
+        self.assertIn("À ne pas manquer", digest)
         self.assertIn("Intérêt pour Bellegarde", digest)
         self.assertIn("Ouvrir l’étude", digest)
-        self.assertIn("Concevoir un message<br>· Tester sur le terrain", digest)
+        self.assertIn('<ul class="application-list ink-2"', digest)
+        self.assertIn("<li>Concevoir un message</li>", digest)
+        self.assertIn("<li>Tester sur le terrain</li>", digest)
         self.assertIn('class="chip"', digest)
         self.assertNotIn("12 rue de la Science", digest)
+        self.assertNotIn("lorsqu’elles sont disponibles", digest)
+        self.assertNotIn("(s)", digest)
+
+        watch_digest = render_digest(
+            (
+                NewPublication(
+                    identity="doi:10.1234/watch",
+                    doi="10.1234/watch",
+                    title="A signal worth watching",
+                    url=None,
+                    source_subject="Alerte scientifique",
+                    source_sender="éditeur@example.org",
+                    priority=PublicationPriority.WATCH,
+                ),
+            )
+        )
+        self.assertIn("Dans le radar", watch_digest)
+        self.assertNotIn("À surveiller", watch_digest)
+
+    def test_digest_uses_natural_french_agreements_for_counts(self):
+        publication = NewPublication(
+            identity="doi:10.1234/agreements",
+            doi="10.1234/agreements",
+            title="Accords grammaticaux",
+            url=None,
+            source_subject="Newsletter",
+            source_sender="éditeur@example.org",
+            priority=PublicationPriority.HIGH,
+        )
+
+        none_retained = render_digest((), total_count=2, excluded_count=2)
+        one_retained = render_digest(
+            (publication,), total_count=1, excluded_count=0
+        )
+        several_retained = render_digest(
+            (publication, publication), total_count=3, excluded_count=1
+        )
+
+        self.assertIn(
+            "Aucune publication retenue sur 2 publications analysées ; "
+            "2 publications écartées.",
+            none_retained,
+        )
+        self.assertIn(
+            "1 publication retenue sur 1 publication analysée ; "
+            "aucune publication écartée.",
+            one_retained,
+        )
+        self.assertIn(
+            "2 publications retenues sur 3 publications analysées ; "
+            "1 publication écartée.",
+            several_retained,
+        )
 
     def test_extracts_html_links_deduplicates_and_is_idempotent(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -411,7 +466,7 @@ class PipelineTests(unittest.TestCase):
                 connection.close()
 
             html = digest.read_text(encoding="utf-8")
-            self.assertIn("3 nouvelle(s) publication(s)", html)
+            self.assertIn("3 nouvelles publications détectées", html)
             self.assertIn("Choice architecture in public services", html)
             self.assertIn("10.9999/mobility-7", html)
 

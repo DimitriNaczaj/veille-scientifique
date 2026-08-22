@@ -21,6 +21,32 @@ _MONTHS_FR = (
     "décembre",
 )
 
+_SECTION_HEADINGS = {
+    PublicationPriority.HIGH: "À ne pas manquer",
+    PublicationPriority.WATCH: "Dans le radar",
+}
+
+
+def _counted_publications(count, singular, plural):
+    if count == 0:
+        return "aucune publication {}".format(singular)
+    if count == 1:
+        return "1 publication {}".format(singular)
+    return "{} publications {}".format(count, plural)
+
+
+def _filtered_summary(retained_count, total_count, excluded_count):
+    retained = _counted_publications(retained_count, "retenue", "retenues")
+    analyzed = _counted_publications(total_count, "analysée", "analysées")
+    excluded = _counted_publications(excluded_count, "écartée", "écartées")
+    return "{} sur {} ; {}.".format(retained.capitalize(), analyzed, excluded)
+
+
+def _new_publications_summary(count):
+    if count == 1:
+        return "1 nouvelle publication détectée."
+    return "{} nouvelles publications détectées.".format(count)
+
 
 def _publication_url(publication):
     if publication.doi:
@@ -56,6 +82,19 @@ def _labelled_block(label, value):
             <p class="ink-2" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:24px;mso-line-height-rule:exactly;color:#57555A;">{value}</p>
           </td>
         </tr>""".format(label=escape(label), value=value)
+
+
+def _applications_block(applications):
+    if not applications:
+        return ""
+    items = "".join("<li>{}</li>".format(escape(item)) for item in applications)
+    return """
+        <tr>
+          <td class="pad" style="padding:24px 34px 0 34px;font-family:Arial,Helvetica,sans-serif;">
+            <p class="ink-3" style="margin:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;letter-spacing:1.4px;color:#7A777D;text-transform:uppercase;">Applications</p>
+            <ul class="application-list ink-2" style="margin:0;padding:0 0 0 20px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:24px;mso-line-height-rule:exactly;color:#57555A;">{}</ul>
+          </td>
+        </tr>""".format(items)
 
 
 def _publication_html(publication):
@@ -104,12 +143,7 @@ def _publication_html(publication):
           </td>
         </tr>""".format(escape(publication.bellegarde_value))
 
-    applications = ""
-    if publication.applications:
-        applications = _labelled_block(
-            "Applications",
-            "<br>· ".join(escape(item) for item in publication.applications),
-        )
+    applications = _applications_block(publication.applications)
 
     themes = ""
     if publication.themes:
@@ -240,7 +274,7 @@ def _section_html(priority, publications):
   </tr>
   {articles}""".format(
         dot=dot,
-        heading=escape(priority.heading or "Publications"),
+        heading=escape(_SECTION_HEADINGS.get(priority, "Publications")),
         articles="".join(_publication_html(publication) for publication in publications),
     )
 
@@ -284,19 +318,15 @@ def render_digest(publications, total_count=None, excluded_count=0):
             body = '<tr><td height="18" style="height:18px;line-height:18px;font-size:0;">&nbsp;</td></tr>'
             body += "".join(_publication_html(publication) for publication in publications)
         if filtered:
-            summary = (
-                "{} publication(s) retenue(s) sur {} analysée(s) ; {} écartée(s)."
-            ).format(len(publications), total_count, excluded_count)
-        else:
-            summary = "{} nouvelle(s) publication(s) détectée(s).".format(
-                len(publications)
+            summary = _filtered_summary(
+                len(publications), total_count, excluded_count
             )
+        else:
+            summary = _new_publications_summary(len(publications))
         preheader = publications[0].summary_fr or summary
     else:
         if excluded_count:
-            summary = "0 publication retenue sur {} analysée(s) ; {} écartée(s).".format(
-                total_count, excluded_count
-            )
+            summary = _filtered_summary(0, total_count, excluded_count)
             body = _empty_html(
                 "Aucune publication pertinente retenue pour cette édition."
             )
@@ -381,7 +411,7 @@ def render_digest(publications, total_count=None, excluded_count=0):
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;border-collapse:collapse;">
         <tr><td class="rule" height="1" style="height:1px;line-height:1px;font-size:0;background:#D6D3D0;">&nbsp;</td></tr>
       </table>
-      <p class="ink-3" style="margin:18px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">Digest généré automatiquement le {now}. Métadonnées enrichies via Crossref lorsqu’elles sont disponibles.</p>
+      <p class="ink-3" style="margin:18px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">Digest généré automatiquement le {now}. Métadonnées enrichies via Crossref.</p>
       <p class="ink-3" style="margin:12px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">Bellegarde — veille interne. <a class="ink-2" href="mailto:science-digest@bellegarde.co?subject=Pr%C3%A9f%C3%A9rences%20veille" style="color:#57555A;text-decoration:underline;">Gérer la réception</a> · <a class="ink-2" href="mailto:science-digest@bellegarde.co?subject=D%C3%A9sabonnement%20veille" style="color:#57555A;text-decoration:underline;">Se désabonner</a></p>
     </td>
   </tr>
