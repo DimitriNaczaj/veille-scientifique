@@ -192,11 +192,12 @@ conserver la configuration privée existante.
 
 ```bash
 VEILLE_ROOT=/volume1/Bellegarde/veille-scientifique \
-PYTHON_BIN=/var/packages/py3k/target/usr/local/bin/python3 \
 /volume1/Bellegarde/veille-scientifique/scripts/run-daily.sh
 ```
 
-Le chemin exact de Python doit être vérifié sur le NAS après installation du paquet.
+Le lanceur détecte `python3.9` ou `python3` dans le `PATH`, puis les emplacements
+usuels des paquets Synology. Si nécessaire, définir explicitement `PYTHON_BIN`
+avec le chemin absolu indiqué par le Centre de paquets.
 Si Python ne trouve pas les certificats système, définir `SSL_CERT_FILE` avec le
 chemin du bundle CA installé sur le NAS ; ne jamais désactiver la vérification TLS.
 Aucune tâche DSM ne doit être activée avant un passage réussi avec `--no-send`, puis

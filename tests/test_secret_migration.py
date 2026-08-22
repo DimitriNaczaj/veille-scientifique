@@ -166,12 +166,15 @@ password = {}
                 "SCIENCE_DIGEST_SMTP_PASSWORD=smtp-key\n",
                 encoding="utf-8",
             )
+            python = root / "python"
+            python.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            python.chmod(0o700)
             launcher = Path(__file__).parents[1] / "scripts" / "run-daily.sh"
             environment = os.environ.copy()
             environment.update(
                 {
                     "VEILLE_ROOT": str(root),
-                    "PYTHON_BIN": "/not-executed/python",
+                    "PYTHON_BIN": str(python),
                     "VEILLE_TEST_OUTPUT": str(output),
                 }
             )
@@ -195,6 +198,86 @@ source "$1"
             self.assertEqual(
                 output.read_text(encoding="utf-8"),
                 "combined-key\nmail-key\nsmtp-key\n",
+            )
+
+    def test_daily_launcher_detects_python_when_not_explicitly_configured(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            python = fake_bin / "python3.9"
+            output = root / "python-invocation.txt"
+            python.write_text(
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$0\" \"$@\" > \"$VEILLE_TEST_OUTPUT\"\n",
+                encoding="utf-8",
+            )
+            python.chmod(0o700)
+            launcher = Path(__file__).parents[1] / "scripts" / "run-daily.sh"
+            environment = os.environ.copy()
+            environment.pop("PYTHON_BIN", None)
+            environment.update(
+                {
+                    "PATH": "{}:/usr/bin:/bin".format(fake_bin),
+                    "VEILLE_ROOT": str(root),
+                    "VEILLE_TEST_OUTPUT": str(output),
+                }
+            )
+
+            subprocess.run(
+                ["bash", str(launcher)],
+                env=environment,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(
+                output.read_text(encoding="utf-8"),
+                "{}\n-m\nveille\ndaily\n--config\n{}\n".format(
+                    python, root / "veille-scientifique.ini"
+                ),
+            )
+
+    def test_daily_launcher_skips_an_incompatible_python_candidate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            incompatible = fake_bin / "python3.9"
+            compatible = fake_bin / "python3"
+            output = root / "python-invocation.txt"
+            incompatible.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+            incompatible.chmod(0o700)
+            compatible.write_text(
+                "#!/bin/sh\n"
+                "if [ \"${1:-}\" = '-c' ]; then exit 0; fi\n"
+                "printf '%s\\n' \"$0\" \"$@\" > \"$VEILLE_TEST_OUTPUT\"\n",
+                encoding="utf-8",
+            )
+            compatible.chmod(0o700)
+            launcher = Path(__file__).parents[1] / "scripts" / "run-daily.sh"
+            environment = os.environ.copy()
+            environment.pop("PYTHON_BIN", None)
+            environment.update(
+                {
+                    "PATH": "{}:/usr/bin:/bin".format(fake_bin),
+                    "VEILLE_ROOT": str(root),
+                    "VEILLE_TEST_OUTPUT": str(output),
+                }
+            )
+
+            subprocess.run(
+                ["bash", str(launcher)],
+                env=environment,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(
+                output.read_text(encoding="utf-8").splitlines()[0],
+                str(compatible),
             )
 
 
