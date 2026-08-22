@@ -16,8 +16,8 @@ from .mail_diagnostics import (
 
 _ASSET_DIR = Path(__file__).resolve().parent.parent / "assets"
 _RELATED_IMAGES = (
-    ("bellegarde-logo-black", "logo-environnement-black.png"),
-    ("bellegarde-logo-white", "logo-environnement-white.png"),
+    ("bellegarde-logo-black", "logo-baseline-black.png"),
+    ("bellegarde-logo-white", "logo-baseline-white.png"),
 )
 
 

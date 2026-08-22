@@ -257,13 +257,13 @@ def _section_html(priority, publications):
     dot = "#6FCF97" if priority is PublicationPriority.HIGH else "#7A777D"
     return """
   <tr>
-    <td class="pad" style="padding:18px 40px 12px 40px;font-family:Arial,Helvetica,sans-serif;">
+    <td class="pad" style="padding:34px 40px 12px 40px;font-family:Arial,Helvetica,sans-serif;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
         <tr>
-          <td width="8" style="width:8px;padding:0 10px 0 0;line-height:0;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="8" style="width:8px;border-collapse:collapse;"><tr><td width="8" height="8" style="width:8px;height:8px;background:{dot};border-radius:8px;line-height:8px;font-size:0;">&nbsp;</td></tr></table>
+          <td width="11" style="width:11px;padding:0 12px 0 0;line-height:0;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="11" style="width:11px;border-collapse:collapse;"><tr><td width="11" height="11" style="width:11px;height:11px;background:{dot};border-radius:11px;line-height:11px;font-size:0;">&nbsp;</td></tr></table>
           </td>
-          <td class="ink" style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:14px;mso-line-height-rule:exactly;letter-spacing:1.6px;font-weight:bold;color:#1D1D1F;text-transform:uppercase;">{heading}</td>
+          <td class="ink" style="font-family:Arial,Helvetica,sans-serif;font-size:24px;line-height:30px;mso-line-height-rule:exactly;font-weight:bold;color:#1D1D1F;">{heading}</td>
         </tr>
       </table>
     </td>
@@ -346,9 +346,12 @@ def render_digest(publications, total_count=None, excluded_count=0):
 <![endif]-->
 <style>
   a[x-apple-data-detectors]{{color:inherit !important;text-decoration:none !important;}}
-  .logo-dark{{display:none !important;mso-hide:all;}}
+  .mark{{background:#E2F5EA;color:#1D1D1F;}}
+  .logo-light{{display:block !important;}}
+  .logo-dark{{display:none !important;max-height:0 !important;overflow:hidden !important;mso-hide:all;}}
   @media only screen and (max-width:620px){{
     .pad{{padding-left:20px !important;padding-right:20px !important;}}
+    .h1{{font-size:27px !important;line-height:32px !important;}}
   }}
   @media (prefers-color-scheme:dark){{
     .bg{{background:#1A181C !important;}}
@@ -362,10 +365,10 @@ def render_digest(publications, total_count=None, excluded_count=0):
     .rule td{{background:#3D3B41 !important;}}
     .btn{{background:#F1F1F1 !important;}}
     .btn a{{color:#1D1D1F !important;}}
-    .mark{{background:#2E4657 !important;color:#DCEBF5 !important;}}
+    .mark{{background:#2C4A39 !important;color:#DCEFE2 !important;}}
     .chip{{border-color:#3D3B41 !important;color:#B4B1B6 !important;}}
     .logo-light{{display:none !important;mso-hide:all !important;}}
-    .logo-dark{{display:block !important;mso-hide:none !important;}}
+    .logo-dark{{display:block !important;max-height:none !important;overflow:visible !important;mso-hide:none !important;}}
   }}
 </style>
 </head>
@@ -379,21 +382,26 @@ def render_digest(publications, total_count=None, excluded_count=0):
 
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:600px;border-collapse:collapse;">
   <tr>
-    <td class="pad" style="padding:4px 40px 16px 40px;font-family:Arial,Helvetica,sans-serif;">
-      <p class="ink-3" style="margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;letter-spacing:1.4px;color:#7A777D;text-transform:uppercase;">Veille quotidienne &nbsp;·&nbsp; {date_label}</p>
+    <td class="pad" style="padding:6px 40px 0 40px;font-family:Arial,Helvetica,sans-serif;">
+      <h1 class="h1 ink" style="margin:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:34px;line-height:40px;mso-line-height-rule:exactly;color:#1D1D1F;font-weight:bold;">Veille scientifique</h1>
+      <p class="ink-3" style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">{date_label}</p>
       <p class="ink" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;mso-line-height-rule:exactly;color:#1D1D1F;font-weight:bold;">{summary}</p>
     </td>
   </tr>
   {body}
   <tr>
-    <td class="pad" style="padding:20px 40px 0 40px;font-family:Arial,Helvetica,sans-serif;">
+    <td class="pad" align="left" style="padding:40px 40px 0 40px;font-family:Arial,Helvetica,sans-serif;">
+      <img class="logo-light" src="cid:bellegarde-logo-black" width="250" height="49" alt="Bellegarde — we change behaviour" style="display:block;width:250px;max-width:100%;height:auto;border:0;">
+      <img class="logo-dark" src="cid:bellegarde-logo-white" width="250" height="49" alt="" aria-hidden="true" style="display:none;width:250px;max-width:100%;height:auto;border:0;max-height:0;overflow:hidden;mso-hide:all;">
+    </td>
+  </tr>
+  <tr>
+    <td class="pad" style="padding:28px 40px 0 40px;font-family:Arial,Helvetica,sans-serif;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;border-collapse:collapse;">
         <tr><td class="rule" height="1" style="height:1px;line-height:1px;font-size:0;background:#D6D3D0;">&nbsp;</td></tr>
       </table>
       <p class="ink-3" style="margin:18px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">Digest généré automatiquement le {now}. Métadonnées enrichies via Crossref.</p>
       <p class="ink-3" style="margin:12px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">Bellegarde — veille interne. <a class="ink-2" href="mailto:science-digest@bellegarde.co?subject=Pr%C3%A9f%C3%A9rences%20veille" style="color:#57555A;text-decoration:underline;">Gérer la réception</a> · <a class="ink-2" href="mailto:science-digest@bellegarde.co?subject=D%C3%A9sabonnement%20veille" style="color:#57555A;text-decoration:underline;">Se désabonner</a></p>
-      <img class="logo-light" src="cid:bellegarde-logo-black" width="220" alt="Bellegarde environnement" style="display:block;width:220px;max-width:100%;height:auto;margin:28px 0 0 0;border:0;">
-      <img class="logo-dark" src="cid:bellegarde-logo-white" width="220" alt="" aria-hidden="true" style="display:none;width:220px;max-width:100%;height:auto;margin:28px 0 0 0;border:0;mso-hide:all;">
     </td>
   </tr>
 </table>

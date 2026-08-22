@@ -121,6 +121,10 @@ class DigestDeliveryTests(unittest.TestCase):
                 set(related_images),
                 {"<bellegarde-logo-black>", "<bellegarde-logo-white>"},
             )
+            self.assertEqual(
+                {image.get_filename() for image in related_images.values()},
+                {"logo-baseline-black.png", "logo-baseline-white.png"},
+            )
             for image in related_images.values():
                 self.assertEqual(image.get_content_type(), "image/png")
                 self.assertTrue(image.get_payload(decode=True).startswith(b"\x89PNG"))
