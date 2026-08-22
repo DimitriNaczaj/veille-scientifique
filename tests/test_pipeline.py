@@ -352,6 +352,12 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("background:#E9E7E5", digest)
         self.assertIn("background:#1A181C !important", digest)
         self.assertIn(">Veille scientifique</h1>", digest)
+        self.assertIn('class="digest-meta ink-3"', digest)
+        self.assertIn(
+            '&nbsp;–&nbsp; <span class="ink-2" '
+            'style="color:#57555A;">1 article retenu sur 2 publiés.</span>',
+            digest,
+        )
         self.assertIn("font-size:34px", digest)
         self.assertIn("font-size:24px", digest)
         self.assertIn("width:11px", digest)

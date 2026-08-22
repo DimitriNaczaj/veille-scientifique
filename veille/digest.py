@@ -379,8 +379,7 @@ def render_digest(publications, total_count=None, excluded_count=0):
   <tr>
     <td class="pad" style="padding:6px 40px 0 40px;font-family:Arial,Helvetica,sans-serif;">
       <h1 class="h1 ink" style="margin:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:34px;line-height:40px;mso-line-height-rule:exactly;color:#1D1D1F;font-weight:bold;">Veille scientifique</h1>
-      <p class="ink-3" style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">{date_label}</p>
-      <p class="ink" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;mso-line-height-rule:exactly;color:#1D1D1F;font-weight:bold;">{summary}</p>
+      <p class="digest-meta ink-3" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">{date_label}&nbsp;–&nbsp; <span class="ink-2" style="color:#57555A;">{summary}</span></p>
     </td>
   </tr>
   {body}
