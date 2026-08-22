@@ -8,8 +8,9 @@ from pathlib import Path
 from tests.test_pipeline import write_email
 from veille.crossref import CrossrefClient
 from veille.filtering import BehavioralScienceFilter
+from veille.publisher_pages import MetadataCascade, PublisherPageClient
 from veille.__main__ import main
-from veille.models import WorkMetadata
+from veille.models import AIAnalysis, WorkMetadata
 from veille.pipeline import run_pipeline
 
 
@@ -45,6 +46,40 @@ class IrrelevantMetadataProvider:
         )
 
 
+class StaticAIAnalyzer:
+    model = "test-model"
+    prompt_version = "test-v1"
+
+    def __init__(self):
+        self.calls = []
+
+    def analyze(self, publication):
+        self.calls.append(publication.identity)
+        return AIAnalysis(
+            relevant=True,
+            priority="high",
+            summary_fr=(
+                "Une expérimentation randomisée montre que les normes sociales "
+                "réduisent durablement la consommation d’énergie."
+            ),
+            bellegarde_value=(
+                "Résultat directement mobilisable pour concevoir et évaluer "
+                "des interventions comportementales."
+            ),
+            applications=("Conception de messages normatifs", "Évaluation terrain"),
+            themes=("normes sociales", "énergie"),
+            input_tokens=240,
+            output_tokens=95,
+            model=self.model,
+            prompt_version=self.prompt_version,
+        )
+
+
+class FailingDelivery:
+    def send(self, digest_path, publications):
+        raise RuntimeError("SMTP indisponible")
+
+
 class StubResponse:
     def __init__(self, payload):
         self.payload = payload
@@ -57,6 +92,20 @@ class StubResponse:
 
     def read(self):
         return json.dumps(self.payload).encode("utf-8")
+
+
+class StubHTMLResponse:
+    def __init__(self, html):
+        self.html = html
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+    def read(self, limit=None):
+        return self.html.encode("utf-8")
 
 
 class CrossrefClientTests(unittest.TestCase):
@@ -105,8 +154,153 @@ class CrossrefClientTests(unittest.TestCase):
         self.assertIn("mailto=veille%40example.org", requests[0][0].full_url)
         self.assertEqual(requests[0][1], 7)
 
+    def test_falls_back_to_publisher_metadata_when_crossref_has_no_abstract(self):
+        class CrossrefWithoutAbstract:
+            def fetch_by_doi(self, doi):
+                return WorkMetadata(
+                    title="Behavioral spillovers from household energy feedback",
+                    abstract=None,
+                    journal="Journal of Environmental Psychology",
+                    published_date="2026-08-21",
+                    authors=("Amina Martin",),
+                    url="https://publisher.example.org/article/42",
+                )
+
+        html = """<!doctype html><html><head>
+        <meta name="citation_abstract" content="A field experiment finds durable behavioral spillovers.">
+        <meta name="citation_title" content="Publisher title">
+        </head><body>Paywalled body</body></html>"""
+        requests = []
+
+        def open_page(request, timeout):
+            requests.append((request.full_url, timeout))
+            return StubHTMLResponse(html)
+
+        provider = MetadataCascade(
+            CrossrefWithoutAbstract(),
+            PublisherPageClient(opener=open_page, timeout=8),
+        )
+
+        metadata = provider.fetch_by_doi("10.1234/behavior.42")
+
+        self.assertEqual(
+            metadata.abstract,
+            "A field experiment finds durable behavioral spillovers.",
+        )
+        self.assertEqual(
+            metadata.title,
+            "Behavioral spillovers from household energy feedback",
+        )
+        self.assertEqual(requests, [("https://publisher.example.org/article/42", 8)])
+
+    def test_enriches_title_only_publication_from_publisher_page(self):
+        html = """<html><head>
+        <meta name="citation_title" content="Social norms and public participation">
+        <meta name="citation_abstract" content="A randomized intervention changes civic engagement.">
+        <meta name="citation_journal_title" content="Behavioral Public Policy">
+        <meta name="citation_author" content="Amina Martin">
+        </head></html>"""
+
+        def open_page(request, timeout):
+            return StubHTMLResponse(html)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "inbox"
+            inbox.mkdir()
+            write_email(
+                inbox / "newsletter.eml",
+                "<publisher-page@example.org>",
+                "Nouvelles publications",
+                markup=(
+                    '<a href="https://www.mdpi.com/2071-1050/18/1/42">'
+                    "Social norms and public participation</a>"
+                ),
+            )
+
+            report = run_pipeline(
+                inbox,
+                root / "veille.sqlite",
+                root / "digest.html",
+                metadata_provider=MetadataCascade(
+                    None, PublisherPageClient(opener=open_page)
+                ),
+                relevance_filter=BehavioralScienceFilter(),
+            )
+
+            self.assertEqual(report.publications_enriched, 1)
+            self.assertIn(
+                "A randomized intervention changes civic engagement.",
+                (root / "digest.html").read_text(encoding="utf-8"),
+            )
+
 
 class EnrichmentPipelineTests(unittest.TestCase):
+    def test_delivery_failure_keeps_publication_pending_for_retry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "inbox"
+            inbox.mkdir()
+            database = root / "veille.sqlite"
+            write_email(
+                inbox / "newsletter.eml",
+                "<delivery-retry@example.org>",
+                "Nouvelles publications",
+                plain="Behavioral publication\nDOI: 10.1234/behavior.1",
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "SMTP indisponible"):
+                run_pipeline(
+                    inbox,
+                    database,
+                    root / "digest.html",
+                    metadata_provider=StaticMetadataProvider(),
+                    relevance_filter=BehavioralScienceFilter(),
+                    delivery_handler=FailingDelivery(),
+                )
+
+            retry = run_pipeline(
+                inbox,
+                database,
+                root / "retry.html",
+                metadata_provider=UnavailableMetadataProvider(),
+                relevance_filter=BehavioralScienceFilter(),
+            )
+            self.assertEqual(retry.publications_delivered, 1)
+            self.assertEqual(retry.publications_pending, 0)
+
+    def test_adds_cached_structured_ai_analysis_to_digest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "inbox"
+            inbox.mkdir()
+            write_email(
+                inbox / "newsletter.eml",
+                "<ai-analysis@example.org>",
+                "Nouvelles publications",
+                plain="Behavioral publication\nDOI: 10.1234/behavior.1",
+            )
+            analyzer = StaticAIAnalyzer()
+
+            report = run_pipeline(
+                inbox,
+                root / "veille.sqlite",
+                root / "digest.html",
+                metadata_provider=StaticMetadataProvider(),
+                relevance_filter=BehavioralScienceFilter(),
+                analysis_provider=analyzer,
+                ai_limit=10,
+            )
+
+            self.assertEqual(report.publications_ai_analyzed, 1)
+            self.assertEqual(report.ai_input_tokens, 240)
+            self.assertEqual(report.ai_output_tokens, 95)
+            self.assertEqual(len(analyzer.calls), 1)
+            html = (root / "digest.html").read_text(encoding="utf-8")
+            self.assertIn("Une expérimentation randomisée", html)
+            self.assertIn("Intérêt pour Bellegarde", html)
+            self.assertIn("Conception de messages normatifs", html)
+
     def test_keeps_doi_pending_without_metadata_provider_by_default(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -6,14 +6,16 @@ Application de veille scientifique autonome et légère pour Synology DS218.
 
 - lecture de newsletters `.eml` ;
 - import ponctuel d’historiques MBOX ou MBOX.ZIP ;
+- synchronisation IMAP incrémentale du dossier `Articles` par UID, en lecture seule ;
 - extraction des DOI depuis le texte et les liens HTML ;
 - découverte des articles sans DOI depuis les titres et liens de suivi des éditeurs pris en charge ;
-- enrichissement des DOI avec les métadonnées et abstracts disponibles dans Crossref ;
+- enrichissement par Crossref puis par métadonnées HTML/JSON-LD des pages éditeurs ;
 - cache Crossref persistant et reprise après panne ;
 - préfiltrage explicable en sciences comportementales ;
 - classement en « Priorité élevée » et « À surveiller » ;
+- second tri et résumés français structurés via l’API OpenAI, lorsque configurée ;
 - déduplication persistante avec SQLite ;
-- génération d’un digest HTML ;
+- génération d’un digest HTML avec alternative texte et envoi SMTP ;
 - diagnostic IMAP en lecture seule et diagnostic SMTP avec envoi test optionnel ;
 - relance idempotente ;
 - aucune dépendance Python externe.
@@ -21,6 +23,40 @@ Application de veille scientifique autonome et légère pour Synology DS218.
 Une référence sans DOI est conservée provisoirement à partir de son titre normalisé.
 Crossref ne contient pas un abstract pour chaque DOI : le digest affiche uniquement
 les métadonnées réellement disponibles et signale les références encore provisoires.
+L’application ne télécharge pas les PDF et ne contourne aucun paywall.
+
+## Exécution quotidienne
+
+Après avoir adapté `veille-scientifique.ini.example`, une seule commande réalise le
+parcours complet :
+
+```bash
+OPENAI_API_KEY=sk-... python3 -m veille daily \
+  --config veille-scientifique.ini
+```
+
+Elle synchronise IMAP, ingère et déduplique les articles, enrichit les métadonnées,
+applique le préfiltre, analyse au plus 30 références par IA, écrit le digest puis
+l’envoie. Tous les plafonds sont configurables dans le fichier INI. Le rapport JSON
+indique notamment les nouveaux messages, les publications en attente, les tokens IA
+consommés et le résultat SMTP.
+
+Au tout premier lancement, `imap.initial_mode = latest` positionne le curseur sur le
+dernier UID sans télécharger les 1 358 messages historiques. Les nouveaux messages
+sont ensuite collectés normalement. Utiliser explicitement `sync-imap
+--initial-mode all` dans une base séparée pour récupérer un historique.
+
+Deux modes permettent une recette sans effet externe :
+
+```bash
+python3 -m veille daily --config veille-scientifique.ini --no-ai --no-send
+python3 -m veille sync-imap --config veille-scientifique.ini \
+  --inbox ./inbox --database ./data/veille.sqlite --limit 10
+```
+
+Sans `OPENAI_API_KEY`, la commande quotidienne continue avec le préfiltre local et
+les abstracts disponibles. `--no-send` considère explicitement le digest généré
+comme traité ; l’utiliser avec une base de recette, pas avec la base de production.
 
 ## Exécution locale
 
@@ -74,6 +110,9 @@ Les exports MBOX, catalogues et rapports locaux sont exclus de Git. Ils peuvent
 contenir des titres, des expéditeurs ou des liens personnalisés et doivent rester
 dans un partage NAS à accès restreint.
 
+L’inventaire des 1 358 newsletters, des plateformes et des 67 revues observées est
+disponible dans [`docs/newsletter-inventory.md`](docs/newsletter-inventory.md).
+
 ## Tester la boîte mail
 
 Copier `veille-scientifique.ini.example` vers `veille-scientifique.ini`, renseigner
@@ -112,27 +151,26 @@ exclus de Git.
 1. Installer le paquet Python 3 depuis le Centre de paquets Synology.
 2. Copier ce dossier dans un partage, par exemple `/volume1/Bellegarde/veille-scientifique`.
 3. Créer les dossiers `inbox`, `data`, `out` et éventuellement `import` s’ils n’existent pas.
-4. Dans **Panneau de configuration → Planificateur de tâches**, créer une tâche planifiée exécutée par un utilisateur dédié.
-5. Utiliser une commande avec des chemins absolus :
+4. Copier l’exemple vers `veille-scientifique.ini`, renseigner les adresses et passer le fichier en mode `600`.
+5. Placer éventuellement `OPENAI_API_KEY=...` dans un fichier `openai.env` en mode `600` à la racine du projet ; il est exclu de Git.
+6. Dans **Panneau de configuration → Planificateur de tâches**, créer une tâche quotidienne exécutée par un utilisateur dédié.
+7. Utiliser le lanceur fourni avec des chemins absolus :
 
 ```bash
-cd /volume1/Bellegarde/veille-scientifique && \
-CROSSREF_EMAIL=veille@votre-domaine.fr \
-/var/packages/py3k/target/usr/local/bin/python3 -m veille run \
-  --inbox /volume1/Bellegarde/veille-scientifique/inbox \
-  --database /volume1/Bellegarde/veille-scientifique/data/veille.sqlite \
-  --output /volume1/Bellegarde/veille-scientifique/out/digest.html
+VEILLE_ROOT=/volume1/Bellegarde/veille-scientifique \
+PYTHON_BIN=/var/packages/py3k/target/usr/local/bin/python3 \
+/volume1/Bellegarde/veille-scientifique/scripts/run-daily.sh
 ```
 
 Le chemin exact de Python doit être vérifié sur le NAS après installation du paquet.
 Si Python ne trouve pas les certificats système, définir `SSL_CERT_FILE` avec le
 chemin du bundle CA installé sur le NAS ; ne jamais désactiver la vérification TLS.
-Aucune tâche DSM ne doit être créée avant ces vérifications.
+Aucune tâche DSM ne doit être activée avant un passage réussi avec `--no-send`, puis
+un envoi test SMTP. La base de production doit être sauvegardée avec le partage.
 
 ## Prochains incréments
 
-1. récupération des abstracts absents de Crossref depuis les pages éditeurs ;
-2. collecte quotidienne IMAP par UID, en lecture seule ;
-3. second filtre et résumés structurés par IA ;
-4. newsletter HTML Bellegarde et envoi SMTP ;
-5. retours « utile / inutile » et intégration Zotero.
+1. évaluation manuelle des faux positifs et faux négatifs sur un échantillon annoté ;
+2. retours « utile / inutile » dans le digest ;
+3. export automatique vers Zotero ;
+4. tableau de bord facultatif de supervision.

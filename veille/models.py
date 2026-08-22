@@ -43,6 +43,20 @@ class WorkMetadata:
 
 
 @dataclass(frozen=True)
+class AIAnalysis:
+    relevant: bool
+    priority: str
+    summary_fr: str
+    bellegarde_value: str
+    applications: Tuple[str, ...]
+    themes: Tuple[str, ...]
+    input_tokens: int
+    output_tokens: int
+    model: str
+    prompt_version: str
+
+
+@dataclass(frozen=True)
 class NewPublication:
     identity: str
     doi: Optional[str]
@@ -58,6 +72,10 @@ class NewPublication:
     relevance_score: int = 0
     relevance_reasons: Tuple[str, ...] = ()
     priority: PublicationPriority = PublicationPriority.UNFILTERED
+    summary_fr: Optional[str] = None
+    bellegarde_value: Optional[str] = None
+    applications: Tuple[str, ...] = ()
+    themes: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -68,9 +86,12 @@ class RunReport:
     publications_new: int
     publications_delivered: int
     publications_enriched: int
+    publications_ai_analyzed: int
     publications_relevant: int
     publications_excluded: int
     publications_pending: int
+    ai_input_tokens: int
+    ai_output_tokens: int
     warnings: Tuple[str, ...]
     errors: Tuple[str, ...]
 
@@ -82,9 +103,12 @@ class RunReport:
             "publications_new": self.publications_new,
             "publications_delivered": self.publications_delivered,
             "publications_enriched": self.publications_enriched,
+            "publications_ai_analyzed": self.publications_ai_analyzed,
             "publications_relevant": self.publications_relevant,
             "publications_excluded": self.publications_excluded,
             "publications_pending": self.publications_pending,
+            "ai_input_tokens": self.ai_input_tokens,
+            "ai_output_tokens": self.ai_output_tokens,
             "warnings": list(self.warnings),
             "errors": list(self.errors),
         }
@@ -112,5 +136,31 @@ class ImportReport:
             "publications_new": self.publications_new,
             "publications_unique": self.publications_unique,
             "sender_domains": self.sender_domains,
+            "errors": list(self.errors),
+        }
+
+
+@dataclass(frozen=True)
+class IMAPSyncReport:
+    folder: str
+    uidvalidity: str
+    messages_available: int
+    messages_downloaded: int
+    messages_existing: int
+    messages_skipped_on_initialization: int
+    last_uid: int
+    errors: Tuple[str, ...]
+
+    def as_dict(self):
+        return {
+            "service": "imap-sync",
+            "status": "ok" if not self.errors else "partial",
+            "folder": self.folder,
+            "uidvalidity": self.uidvalidity,
+            "messages_available": self.messages_available,
+            "messages_downloaded": self.messages_downloaded,
+            "messages_existing": self.messages_existing,
+            "messages_skipped_on_initialization": self.messages_skipped_on_initialization,
+            "last_uid": self.last_uid,
             "errors": list(self.errors),
         }

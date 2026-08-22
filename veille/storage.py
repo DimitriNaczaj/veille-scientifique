@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .mail_parser import publication_identity_from_title
-from .models import NewPublication, PublicationCandidate
+from .models import AIAnalysis, NewPublication, PublicationCandidate
 
 
 SCHEMA = """
@@ -49,8 +49,33 @@ CREATE TABLE IF NOT EXISTS publication_metadata (
     url TEXT,
     checked_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS imap_sync_state (
+    account TEXT NOT NULL,
+    folder TEXT NOT NULL,
+    uidvalidity TEXT NOT NULL,
+    last_uid INTEGER NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (account, folder, uidvalidity)
+);
+
+CREATE TABLE IF NOT EXISTS publication_ai_assessments (
+    publication_identity TEXT NOT NULL REFERENCES publications(identity),
+    model TEXT NOT NULL,
+    prompt_version TEXT NOT NULL,
+    relevant INTEGER NOT NULL,
+    priority TEXT NOT NULL,
+    summary_fr TEXT NOT NULL,
+    bellegarde_value TEXT NOT NULL,
+    applications_json TEXT NOT NULL,
+    themes_json TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL,
+    output_tokens INTEGER NOT NULL,
+    checked_at TEXT NOT NULL,
+    PRIMARY KEY (publication_identity, model, prompt_version)
+);
 """
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 
 
 def _utc_now():
@@ -184,6 +209,23 @@ class Store:
 
     def close(self):
         self.connection.close()
+
+    def imap_last_uid(self, account, folder, uidvalidity):
+        row = self.connection.execute(
+            "SELECT last_uid FROM imap_sync_state "
+            "WHERE account = ? AND folder = ? AND uidvalidity = ?",
+            (account, folder, uidvalidity),
+        ).fetchone()
+        return row[0] if row is not None else None
+
+    def save_imap_last_uid(self, account, folder, uidvalidity, last_uid):
+        with self.connection:
+            self.connection.execute(
+                "INSERT OR REPLACE INTO imap_sync_state("
+                "account, folder, uidvalidity, last_uid, updated_at"
+                ") VALUES (?, ?, ?, ?, ?)",
+                (account, folder, uidvalidity, last_uid, _utc_now()),
+            )
 
     def has_message(self, identity):
         row = self.connection.execute(
@@ -331,6 +373,21 @@ class Store:
             (provisional_identity,),
         )
         self.connection.execute(
+            "INSERT OR IGNORE INTO publication_ai_assessments("
+            "publication_identity, model, prompt_version, relevant, priority, "
+            "summary_fr, bellegarde_value, applications_json, themes_json, "
+            "input_tokens, output_tokens, checked_at"
+            ") SELECT ?, model, prompt_version, relevant, priority, summary_fr, "
+            "bellegarde_value, applications_json, themes_json, input_tokens, "
+            "output_tokens, checked_at FROM publication_ai_assessments "
+            "WHERE publication_identity = ?",
+            (candidate.identity, provisional_identity),
+        )
+        self.connection.execute(
+            "DELETE FROM publication_ai_assessments WHERE publication_identity = ?",
+            (provisional_identity,),
+        )
+        self.connection.execute(
             "UPDATE publication_title_aliases SET publication_identity = ? "
             "WHERE publication_identity = ?",
             (candidate.identity, provisional_identity),
@@ -351,13 +408,14 @@ class Store:
     def publications_to_enrich(self, limit):
         return tuple(
             self.connection.execute(
-                "SELECT p.identity, p.doi "
+                "SELECT p.identity, p.doi, p.url "
                 "FROM publications p "
                 "LEFT JOIN publication_metadata pm "
                 "ON pm.publication_identity = p.identity "
-                "WHERE p.delivered_at IS NULL AND p.doi IS NOT NULL "
+                "WHERE p.delivered_at IS NULL "
+                "AND (p.doi IS NOT NULL OR p.url IS NOT NULL) "
                 "AND pm.publication_identity IS NULL "
-                "ORDER BY p.first_seen_at, p.doi LIMIT ?",
+                "ORDER BY p.first_seen_at, p.identity LIMIT ?",
                 (limit,),
             ).fetchall()
         )
@@ -410,6 +468,53 @@ class Store:
                 "publication_identity, status, checked_at"
                 ") VALUES (?, 'not_found', ?)",
                 (identity, _utc_now()),
+            )
+
+    def load_ai_assessment(self, identity, model, prompt_version):
+        row = self.connection.execute(
+            "SELECT relevant, priority, summary_fr, bellegarde_value, "
+            "applications_json, themes_json, input_tokens, output_tokens "
+            "FROM publication_ai_assessments WHERE publication_identity = ? "
+            "AND model = ? AND prompt_version = ?",
+            (identity, model, prompt_version),
+        ).fetchone()
+        if row is None:
+            return None
+        return AIAnalysis(
+            relevant=bool(row[0]),
+            priority=row[1],
+            summary_fr=row[2],
+            bellegarde_value=row[3],
+            applications=tuple(json.loads(row[4])),
+            themes=tuple(json.loads(row[5])),
+            input_tokens=row[6],
+            output_tokens=row[7],
+            model=model,
+            prompt_version=prompt_version,
+        )
+
+    def save_ai_assessment(self, identity, analysis):
+        with self.connection:
+            self.connection.execute(
+                "INSERT OR REPLACE INTO publication_ai_assessments("
+                "publication_identity, model, prompt_version, relevant, priority, "
+                "summary_fr, bellegarde_value, applications_json, themes_json, "
+                "input_tokens, output_tokens, checked_at"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    identity,
+                    analysis.model,
+                    analysis.prompt_version,
+                    1 if analysis.relevant else 0,
+                    analysis.priority,
+                    analysis.summary_fr,
+                    analysis.bellegarde_value,
+                    json.dumps(analysis.applications, ensure_ascii=False),
+                    json.dumps(analysis.themes, ensure_ascii=False),
+                    analysis.input_tokens,
+                    analysis.output_tokens,
+                    _utc_now(),
+                ),
             )
 
     def _load_publications(self, require_metadata, pending_only):

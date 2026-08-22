@@ -30,6 +30,26 @@ def _publication_html(publication):
         abstract = '<p class="abstract"><strong>Abstract :</strong> {}</p>'.format(
             escape(publication.abstract)
         )
+    summary = ""
+    if publication.summary_fr:
+        summary = '<p class="summary"><strong>En bref :</strong> {}</p>'.format(
+            escape(publication.summary_fr)
+        )
+    bellegarde_value = ""
+    if publication.bellegarde_value:
+        bellegarde_value = (
+            '<p class="bellegarde-value"><strong>Intérêt pour Bellegarde :</strong> {}</p>'
+        ).format(escape(publication.bellegarde_value))
+    applications = ""
+    if publication.applications:
+        applications = (
+            '<p class="applications"><strong>Applications :</strong> {}</p>'
+        ).format(escape(" · ".join(publication.applications)))
+    themes = ""
+    if publication.themes:
+        themes = '<p class="themes"><strong>Thèmes :</strong> {}</p>'.format(
+            escape(", ".join(publication.themes))
+        )
     relevance = ""
     if publication.relevance_reasons:
         relevance = '<p class="relevance"><strong>Repéré pour :</strong> {}</p>'.format(
@@ -51,6 +71,10 @@ def _publication_html(publication):
         '<h2><a href="{url}">{title}</a></h2>'
         "{bibliographic}"
         "{authors}"
+        "{summary}"
+        "{bellegarde_value}"
+        "{applications}"
+        "{themes}"
         "{abstract}"
         "{relevance}"
         "{metadata}"
@@ -61,6 +85,10 @@ def _publication_html(publication):
         title=title,
         bibliographic=bibliographic,
         authors=authors,
+        summary=summary,
+        bellegarde_value=bellegarde_value,
+        applications=applications,
+        themes=themes,
         abstract=abstract,
         relevance=relevance,
         metadata=metadata,

@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 from .digest import write_digest
@@ -7,6 +8,26 @@ from .storage import Store
 
 
 MAX_ENRICHMENT_LIMIT = 1000
+MAX_AI_LIMIT = 1000
+
+
+def _apply_ai_analysis(publication, analysis):
+    priorities = {
+        "high": PublicationPriority.HIGH,
+        "watch": PublicationPriority.WATCH,
+        "excluded": PublicationPriority.EXCLUDED,
+    }
+    priority = priorities.get(analysis.priority, PublicationPriority.EXCLUDED)
+    if not analysis.relevant:
+        priority = PublicationPriority.EXCLUDED
+    return replace(
+        publication,
+        priority=priority,
+        summary_fr=analysis.summary_fr,
+        bellegarde_value=analysis.bellegarde_value,
+        applications=analysis.applications,
+        themes=analysis.themes,
+    )
 
 
 def run_pipeline(
@@ -17,6 +38,9 @@ def run_pipeline(
     relevance_filter=None,
     enrichment_limit=100,
     deliver_unenriched=False,
+    analysis_provider=None,
+    ai_limit=30,
+    delivery_handler=None,
 ):
     if (
         isinstance(enrichment_limit, bool)
@@ -29,6 +53,15 @@ def run_pipeline(
                 MAX_ENRICHMENT_LIMIT
             )
         )
+    if (
+        isinstance(ai_limit, bool)
+        or not isinstance(ai_limit, int)
+        or ai_limit < 0
+        or ai_limit > MAX_AI_LIMIT
+    ):
+        raise ValueError(
+            "La limite IA doit être comprise entre 0 et {}.".format(MAX_AI_LIMIT)
+        )
     inbox_path = Path(inbox)
     if not inbox_path.exists() or not inbox_path.is_dir():
         raise ValueError("Le dossier d’entrée n’existe pas : {}".format(inbox_path))
@@ -38,6 +71,9 @@ def run_pipeline(
     publications_detected = 0
     publications_new = 0
     publications_enriched = 0
+    publications_ai_analyzed = 0
+    ai_input_tokens = 0
+    ai_output_tokens = 0
     warnings = []
     errors = []
 
@@ -57,9 +93,15 @@ def run_pipeline(
 
         if metadata_provider is not None:
             consecutive_enrichment_errors = 0
-            for identity, doi in store.publications_to_enrich(enrichment_limit):
+            for identity, doi, url in store.publications_to_enrich(enrichment_limit):
+                reference = doi or url
                 try:
-                    metadata = metadata_provider.fetch_by_doi(doi)
+                    if doi is not None:
+                        metadata = metadata_provider.fetch_by_doi(doi)
+                    elif hasattr(metadata_provider, "fetch_by_url"):
+                        metadata = metadata_provider.fetch_by_url(url)
+                    else:
+                        continue
                     if metadata is None:
                         store.save_metadata_not_found(identity)
                     else:
@@ -67,7 +109,7 @@ def run_pipeline(
                         publications_enriched += 1
                     consecutive_enrichment_errors = 0
                 except Exception as error:
-                    warnings.append("{}: {}".format(doi, error))
+                    warnings.append("{}: {}".format(reference, error))
                     consecutive_enrichment_errors += 1
                     if consecutive_enrichment_errors >= 3:
                         warnings.append(
@@ -79,27 +121,64 @@ def run_pipeline(
             require_metadata=not deliver_unenriched
         )
         if relevance_filter is None:
-            selected_publications = pending_publications
-            publications_excluded = 0
+            assessed = pending_publications
         else:
             assessed = tuple(
                 relevance_filter.assess(publication)
                 for publication in pending_publications
             )
+
+        if analysis_provider is None:
+            handled_publications = assessed
             selected_publications = tuple(
                 publication
                 for publication in assessed
                 if publication.priority is not PublicationPriority.EXCLUDED
             )
-            publications_excluded = len(assessed) - len(selected_publications)
+        else:
+            handled = []
+            selected = []
+            for publication in assessed:
+                if publication.priority is PublicationPriority.EXCLUDED:
+                    handled.append(publication)
+                    continue
+                analysis = store.load_ai_assessment(
+                    publication.identity,
+                    analysis_provider.model,
+                    analysis_provider.prompt_version,
+                )
+                if analysis is None:
+                    if publications_ai_analyzed >= ai_limit:
+                        continue
+                    try:
+                        analysis = analysis_provider.analyze(publication)
+                        store.save_ai_assessment(publication.identity, analysis)
+                        publications_ai_analyzed += 1
+                        ai_input_tokens += analysis.input_tokens
+                        ai_output_tokens += analysis.output_tokens
+                    except Exception as error:
+                        warnings.append(
+                            "Analyse IA {}: {}".format(publication.identity, error)
+                        )
+                        continue
+                analyzed = _apply_ai_analysis(publication, analysis)
+                handled.append(analyzed)
+                if analyzed.priority is not PublicationPriority.EXCLUDED:
+                    selected.append(analyzed)
+            handled_publications = tuple(handled)
+            selected_publications = tuple(selected)
+
+        publications_excluded = len(handled_publications) - len(selected_publications)
 
         write_digest(
             output,
             selected_publications,
-            total_count=len(pending_publications),
+            total_count=len(handled_publications),
             excluded_count=publications_excluded,
         )
-        store.mark_delivered(pending_publications)
+        if delivery_handler is not None:
+            delivery_handler.send(output, selected_publications)
+        store.mark_delivered(handled_publications)
         publications_pending = store.pending_count()
     finally:
         store.close()
@@ -109,11 +188,14 @@ def run_pipeline(
         messages_skipped=messages_skipped,
         publications_detected=publications_detected,
         publications_new=publications_new,
-        publications_delivered=len(pending_publications),
+        publications_delivered=len(handled_publications),
         publications_enriched=publications_enriched,
+        publications_ai_analyzed=publications_ai_analyzed,
         publications_relevant=len(selected_publications),
         publications_excluded=publications_excluded,
         publications_pending=publications_pending,
+        ai_input_tokens=ai_input_tokens,
+        ai_output_tokens=ai_output_tokens,
         warnings=tuple(warnings),
         errors=tuple(errors),
     )

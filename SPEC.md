@@ -6,9 +6,9 @@ Bellegarde reçoit des newsletters d’éditeurs scientifiques contenant plusieu
 
 ## Solution
 
-L’application est un programme Python sans dépendance externe qui traite des messages `.eml` et importe des historiques MBOX/MBOX.ZIP, identifie les DOI ainsi que les titres liés par les éditeurs pris en charge, conserve un historique SQLite, déduplique les publications, enrichit les DOI via Crossref, applique un préfiltrage explicable et génère un digest HTML.
+L’application est un programme Python sans dépendance externe qui synchronise en lecture seule le dossier IMAP `Articles`, traite aussi les messages `.eml` et les historiques MBOX/MBOX.ZIP, identifie et déduplique les publications dans SQLite, enrichit leurs métadonnées via Crossref puis les pages éditeurs, applique un préfiltrage explicable, peut confier le second tri et le résumé à une IA structurée, génère un digest HTML et l’envoie par SMTP.
 
-Les incréments réalisés valident le cœur idempotent, l’enrichissement distant, la réduction de volume et la connectivité IMAP/SMTP avant d’ajouter la collecte automatique, le classement par IA et l’envoi du digest.
+Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque frontière distante est limitée, mise en cache et reprise après échec. Sans clé d’IA, le service reste fonctionnel avec le préfiltre local et les abstracts disponibles ; sans destinataire SMTP configuré, un mode sans envoi permet une validation complète sur disque.
 
 ## User Stories
 
@@ -31,6 +31,19 @@ Les incréments réalisés valident le cœur idempotent, l’enrichissement dist
 17. En tant qu’exploitant du NAS, je veux tester l’authentification IMAP et ouvrir le dossier en lecture seule, afin de valider la configuration sans modifier les messages.
 18. En tant qu’exploitant du NAS, je veux tester l’authentification SMTP sans envoi puis déclencher explicitement un courriel de contrôle, afin de distinguer connexion et livraison.
 19. En tant qu’exploitant du NAS, je veux que les diagnostics ne révèlent jamais le mot de passe, y compris en cas d’erreur distante.
+20. En tant qu’exploitant du NAS, je veux synchroniser les nouveaux messages du dossier `Articles` par UID sans modifier leurs drapeaux, afin d’automatiser la collecte sans perturber la boîte.
+21. En tant qu’exploitant du NAS, je veux limiter chaque synchronisation et reprendre au passage suivant, afin qu’un historique important ne sature pas le DS218.
+22. En tant que consultant Bellegarde, je veux récupérer un abstract depuis la page de l’éditeur lorsque Crossref n’en fournit pas, afin d’améliorer la pertinence du tri.
+23. En tant qu’exploitant du NAS, je veux limiter et mémoriser les consultations de pages éditeurs, afin de respecter les services distants et d’éviter les requêtes répétées.
+24. En tant que consultant Bellegarde, je veux qu’un second tri IA évalue seulement les références retenues par le préfiltre, afin de maîtriser le coût.
+25. En tant que consultant Bellegarde, je veux pour chaque article retenu un résumé français, l’intérêt pour Bellegarde et des applications possibles, afin de décider rapidement s’il mérite une lecture complète.
+26. En tant qu’exploitant du NAS, je veux une sortie IA validée par un schéma strict et mise en cache, afin qu’une réponse invalide ou une reprise ne produise pas de contenu incohérent ni de nouvel appel inutile.
+27. En tant qu’exploitant du NAS, je veux plafonner le nombre d’analyses IA par exécution, afin de borner le coût et la durée.
+28. En tant que consultant Bellegarde, je veux recevoir un courriel HTML avec une alternative texte et les liens DOI ou éditeur, afin de lire la veille dans n’importe quel client mail.
+29. En tant qu’exploitant du NAS, je veux que les publications ne soient marquées comme livrées qu’après la réussite de l’envoi ou d’une exécution explicitement sans envoi, afin qu’un échec SMTP reste récupérable.
+30. En tant qu’exploitant du NAS, je veux qu’une exécution quotidienne échouée retourne un rapport JSON et un code non nul sans révéler de secret, afin de la superviser dans DSM.
+31. En tant qu’exploitant du NAS, je veux pouvoir tester tout le parcours avec de faux services aux seules frontières réseau, afin de déployer avec confiance sans dépendre du réseau dans les tests.
+32. En tant que consultant Bellegarde, je veux inventorier les éditeurs et revues observés dans l’historique, afin de transférer progressivement les abonnements vers l’adresse dédiée.
 
 ## Implementation Decisions
 
@@ -62,6 +75,19 @@ Les incréments réalisés valident le cœur idempotent, l’enrichissement dist
 - Une commande `test-smtp` utilise STARTTLS sur le port 587 par défaut. Elle n’envoie rien sans `--send-test` ; cette option expédie un unique message au destinataire de contrôle configuré.
 - La section SMTP est facultative : à défaut, l’hôte et les identifiants IMAP sont réutilisés. La vérification des certificats TLS n’est jamais désactivée.
 - Les diagnostics ont un délai réseau de 15 secondes et leurs erreurs masquent le mot de passe avant affichage.
+- La synchronisation IMAP s’appuie sur `UIDVALIDITY` et les UID, télécharge le message RFC822 dans un fichier déterministe écrit atomiquement et sélectionne toujours le dossier en lecture seule.
+- Un état de synchronisation SQLite sépare chaque compte, dossier et `UIDVALIDITY`. Un plafond borne le nombre de téléchargements ; seuls les UID supérieurs au curseur validé sont considérés lors des passages suivants.
+- Le premier passage peut télécharger tout le dossier ou seulement une fenêtre récente configurable ; dans les deux cas, le curseur n’avance qu’après les écritures réussies.
+- Crossref reste la source canonique des métadonnées DOI. Une page éditeur n’est consultée que lorsqu’un abstract manque et qu’une URL HTTP(S) exploitable existe.
+- L’extracteur de page lit uniquement les métadonnées HTML standard (`citation_abstract`, Dublin Core, OpenGraph, description et JSON-LD), limite la taille téléchargée et n’essaie pas de contourner un paywall.
+- Le préfiltre local reste le premier niveau. L’IA ne reçoit que le titre, l’abstract et les métadonnées bibliographiques des références candidates, jamais le courriel complet ni les identifiants de boîte.
+- Le fournisseur IA par défaut utilise l’API Responses d’OpenAI, un modèle économique configurable, `store=false` et des Structured Outputs stricts. La clé vient uniquement d’une variable d’environnement.
+- L’analyse IA produit une décision de pertinence, une priorité, un résumé français concis, l’intérêt pour Bellegarde, des applications et des thèmes. Elle est enregistrée par identité de publication et version de modèle/prompt.
+- Sans clé ou lorsque l’IA est désactivée, le digest utilise la décision du préfiltre et l’abstract disponible ; cette dégradation est signalée dans le rapport.
+- Le digest contient une partie texte et une partie HTML. L’adresse destinataire est obligatoire pour un envoi réel et distincte du destinataire de test.
+- Une erreur d’enrichissement ou d’IA laisse la publication concernée en attente. Les exclusions évaluées et les articles envoyés sont marqués traités seulement après la réussite de la livraison globale.
+- La commande `daily` enchaîne synchronisation, ingestion, enrichissement, analyse, génération et livraison. `--no-send`, `--no-ai` et les plafonds permettent une validation contrôlée.
+- Le Planificateur de tâches DSM lance `daily` une fois par jour avec des chemins absolus, un fichier INI en mode `600` et la clé IA dans l’environnement du compte dédié.
 
 ## Testing Decisions
 
@@ -70,15 +96,17 @@ Les incréments réalisés valident le cœur idempotent, l’enrichissement dist
 - Les MBOX et ZIP de test sont synthétiques, y compris les métadonnées AppleDouble et les relais éditeurs.
 - Aucun réseau, secret ou service externe n’est requis par la suite de tests.
 - Les clients IMAP et SMTP sont remplacés à leur frontière système pour vérifier la lecture seule, STARTTLS, l’envoi explicite et l’absence de secret dans les sorties.
+- Le parcours `daily` est testé par sa commande publique avec de vrais fichiers, une vraie base temporaire et de faux clients uniquement pour IMAP, HTTP/IA et SMTP.
+- Les tests couvrent la reprise après échec, les plafonds, l’absence de double téléchargement et de double livraison, la dégradation sans IA et le masquage des secrets.
 
 ## Out of Scope
 
-- Collecte IMAP automatisée par UID ou authentification OAuth.
-- Récupération d’un abstract absent de Crossref depuis la page de l’éditeur.
-- Second filtrage et résumé par IA.
+- Authentification IMAP OAuth ; le mot de passe applicatif reste le mécanisme du MVP.
 - Téléchargement ou lecture de PDF.
-- Envoi automatique du digest par SMTP.
 - Interface web d’administration.
+- Contournement de paywall, de CAPTCHA ou de consentement éditeur.
+- Garantie mathématique d’envoi SMTP exactement une fois en cas de coupure au moment précis de l’acceptation distante ; l’application privilégie la reprise et documente cette fenêtre rare.
+- Inscription automatisée lorsqu’un éditeur exige un compte nominatif, un CAPTCHA ou une confirmation humaine.
 
 ## Further Notes
 
@@ -86,3 +114,5 @@ Les incréments réalisés valident le cœur idempotent, l’enrichissement dist
 - La disponibilité des abstracts dans Crossref dépend des dépôts effectués par les éditeurs.
 - Une référence sans DOI reste provisoire jusqu’à son enrichissement par une source canonique.
 - Le traitement doit rester compatible avec une exécution quotidienne planifiée et interrompue entre deux runs.
+- Le modèle IA et les limites restent des paramètres d’exploitation afin de pouvoir ajuster coût et qualité sans migration de base.
+- Le corpus historique sert à l’inventaire et à la validation ; il ne doit pas provoquer automatiquement l’envoi d’un digest rétrospectif massif.

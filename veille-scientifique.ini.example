@@ -3,13 +3,33 @@ host = mail.infomaniak.com
 port = 993
 username = science-digest@example.org
 password = CHANGE_ME
-folder = INBOX
+folder = Articles
+# Premier lancement quotidien : ignorer l’historique déjà présent.
+initial_mode = latest
 
 [smtp]
 host = mail.infomaniak.com
 port = 587
 security = starttls
-username = science-digest@example.org
-password = CHANGE_ME
+# username et password sont repris de [imap] s’ils sont omis.
 from_address = science-digest@example.org
 test_recipient = science-digest@example.org
+
+[digest]
+recipient = consultant@example.org
+from_address = science-digest@example.org
+subject_prefix = Veille scientifique Bellegarde
+
+[app]
+inbox = /volume1/Bellegarde/veille-scientifique/inbox
+database = /volume1/Bellegarde/veille-scientifique/data/veille.sqlite
+output = /volume1/Bellegarde/veille-scientifique/out/digest.html
+crossref_email = science-digest@example.org
+sync_limit = 200
+enrichment_limit = 100
+ai_limit = 30
+
+[ai]
+enabled = true
+model = gpt-5.6-luna
+api_key_env = OPENAI_API_KEY

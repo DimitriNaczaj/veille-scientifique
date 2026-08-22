@@ -4,7 +4,9 @@ import os
 import sys
 
 from .crossref import CrossrefClient
+from .daily import run_daily
 from .filtering import BehavioralScienceFilter
+from .imap_sync import run_imap_sync
 from .mbox_import import run_mbox_import
 from .mail_diagnostics import run_imap_diagnostic, run_smtp_diagnostic
 from .pipeline import run_pipeline
@@ -73,10 +75,55 @@ def build_parser():
         action="store_true",
         help="Envoyer un mail de contrôle au destinataire configuré",
     )
+    sync_imap = subparsers.add_parser(
+        "sync-imap",
+        help="Télécharger les nouveaux messages IMAP sans modifier la boîte",
+    )
+    sync_imap.add_argument("--config", required=True, help="Chemin du fichier INI privé")
+    sync_imap.add_argument("--inbox", required=True, help="Dossier local des messages .eml")
+    sync_imap.add_argument("--database", required=True, help="Chemin de la base SQLite")
+    sync_imap.add_argument(
+        "--limit",
+        type=int,
+        default=200,
+        help="Nombre maximal de messages téléchargés, 0 pour tous (défaut : 200)",
+    )
+    sync_imap.add_argument(
+        "--initial-mode",
+        choices=("all", "latest"),
+        default="all",
+        help="Au premier passage, tout télécharger ou ignorer l’historique",
+    )
+    daily = subparsers.add_parser(
+        "daily",
+        help="Synchroniser, analyser, générer et envoyer la veille quotidienne",
+    )
+    daily.add_argument("--config", required=True, help="Chemin du fichier INI privé")
+    daily.add_argument("--inbox", help="Remplacer le dossier local configuré")
+    daily.add_argument("--database", help="Remplacer la base SQLite configurée")
+    daily.add_argument("--output", help="Remplacer le digest HTML configuré")
+    daily.add_argument("--sync-limit", type=int, help="Remplacer la limite IMAP")
+    daily.add_argument(
+        "--initial-mode",
+        choices=("all", "latest"),
+        help="Remplacer le mode du premier passage IMAP",
+    )
+    daily.add_argument(
+        "--enrichment-limit", type=int, help="Remplacer la limite d’enrichissement"
+    )
+    daily.add_argument("--ai-limit", type=int, help="Remplacer la limite IA")
+    daily.add_argument("--no-ai", action="store_true", help="Désactiver l’analyse IA")
+    daily.add_argument("--no-send", action="store_true", help="Générer sans envoyer")
     return parser
 
 
-def main(argv=None, imap_factory=None, smtp_factory=None):
+def main(
+    argv=None,
+    imap_factory=None,
+    smtp_factory=None,
+    http_opener=None,
+    ai_opener=None,
+):
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command is None:
@@ -84,7 +131,33 @@ def main(argv=None, imap_factory=None, smtp_factory=None):
         return 2
 
     try:
-        if args.command == "test-smtp":
+        if args.command == "daily":
+            report = run_daily(
+                args.config,
+                inbox=args.inbox,
+                database=args.database,
+                output=args.output,
+                sync_limit=args.sync_limit,
+                initial_mode=args.initial_mode,
+                enrichment_limit=args.enrichment_limit,
+                ai_limit=args.ai_limit,
+                no_ai=args.no_ai,
+                no_send=args.no_send,
+                imap_factory=imap_factory,
+                smtp_factory=smtp_factory,
+                http_opener=http_opener,
+                ai_opener=ai_opener,
+            )
+        elif args.command == "sync-imap":
+            report = run_imap_sync(
+                args.config,
+                args.inbox,
+                args.database,
+                limit=args.limit,
+                initial_mode=args.initial_mode,
+                client_factory=imap_factory,
+            )
+        elif args.command == "test-smtp":
             report = run_smtp_diagnostic(
                 args.config,
                 send_test=args.send_test,

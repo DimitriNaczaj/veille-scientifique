@@ -108,6 +108,16 @@ def _safe_error(error, password):
     return message
 
 
+def create_imap_client(settings, client_factory=None):
+    factory = client_factory or imaplib.IMAP4_SSL
+    with _socket_timeout(15):
+        return factory(
+            settings.host,
+            settings.port,
+            ssl_context=create_tls_context(),
+        )
+
+
 def _required(config, section, option):
     if not config.has_section(section):
         raise ValueError("Section [{}] absente de la configuration.".format(section))
@@ -204,15 +214,9 @@ def load_smtp_settings(path):
 
 def run_imap_diagnostic(config_path, client_factory=None):
     settings = load_imap_settings(config_path)
-    factory = client_factory or imaplib.IMAP4_SSL
     client = None
     try:
-        with _socket_timeout(15):
-            client = factory(
-                settings.host,
-                settings.port,
-                ssl_context=create_tls_context(),
-            )
+        client = create_imap_client(settings, client_factory)
         client.login(settings.username, settings.password)
         status, data = client.select(settings.folder, readonly=True)
         if status != "OK":

@@ -58,17 +58,32 @@ Validation réelle effectuée le 22 août 2026 avec la configuration privée de
 `science-digest@bellegarde.co` :
 
 - authentification IMAP TLS réussie sur `mail.infomaniak.com:993` ;
-- ouverture de `INBOX` en lecture seule réussie ;
+- ouverture initiale de `INBOX` en lecture seule réussie ;
 - authentification SMTP avec STARTTLS réussie sur `mail.infomaniak.com:587` ;
 - un courriel de contrôle envoyé par la boîte vers elle-même ;
 - `INBOX` est passée de 1 à 2 messages après l’envoi, confirmant la livraison ;
 - aucun mot de passe n’apparaît dans les rapports JSON ou les tests automatisés.
 
-La boîte distante ne contenait que deux messages après ce contrôle, et non les
-quelque 1 300 messages de l’archive historique. Il faudra donc localiser le dossier
-IMAP de destination de ces transferts, ou confirmer qu’ils n’existent que dans
-l’export MBOX, avant de développer la collecte quotidienne.
+Le dossier `Articles`, identifié ensuite, contient exactement 1 358 messages. Une
+validation réelle de la synchronisation incrémentale a découvert les 1 358 UID,
+lu `UIDVALIDITY=1787350414` et téléchargé un message dans un répertoire temporaire,
+sans erreur et sans modifier les drapeaux IMAP.
 
-Un dernier diagnostic d’authentification, sans envoi, a encore validé IMAP et SMTP
-mais a trouvé `INBOX` vide. Ces diagnostics n’altèrent pas les messages ; l’emplacement
-actuel des newsletters historiques reste donc à identifier côté boîte mail.
+## Parcours quotidien complet
+
+Validation automatisée effectuée le 22 août 2026 avec des services synthétiques aux
+seules frontières réseau :
+
+- synchronisation IMAP par UID et reprise sans double téléchargement ;
+- initialisation sûre au dernier UID pour ne pas envoyer l’historique ;
+- enrichissement Crossref et repli vers les métadonnées de page éditeur ;
+- enrichissement des références avec et sans DOI ;
+- analyse IA structurée, cache, compteur de tokens et rendu dans le digest ;
+- message multipart texte/HTML envoyé par SMTP STARTTLS ;
+- absence d’envoi lorsque le digest est vide ;
+- conservation des publications en attente après un échec SMTP ;
+- commande `daily` validée de bout en bout.
+
+La couche OpenAI n’a pas été appelée avec un compte réel, faute de clé API fournie.
+La validation garantit le contrat HTTP et le schéma de réponse, mais la qualité du
+classement doit encore être évaluée sur un échantillon annoté avant activation.
