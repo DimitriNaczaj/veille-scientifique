@@ -26,6 +26,9 @@ Crossref ne contient pas un abstract pour chaque DOI : le digest affiche uniquem
 les métadonnées réellement disponibles et signale les références encore provisoires.
 L’application ne télécharge pas les PDF et ne contourne aucun paywall.
 
+Les évolutions envisagées pour la version 2 sont suivies dans
+[`TODO.md`](TODO.md).
+
 ## Exécution quotidienne
 
 Après avoir adapté `veille-scientifique.ini.example` et chargé les secrets dans

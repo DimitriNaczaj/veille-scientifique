@@ -27,19 +27,16 @@ _SECTION_HEADINGS = {
 }
 
 
-def _counted_publications(count, singular, plural):
-    if count == 0:
-        return "aucune publication {}".format(singular)
+def _counted_articles(count, singular, plural):
     if count == 1:
-        return "1 publication {}".format(singular)
-    return "{} publications {}".format(count, plural)
+        return "1 article {}".format(singular)
+    return "{} articles {}".format(count, plural)
 
 
-def _filtered_summary(retained_count, total_count, excluded_count):
-    retained = _counted_publications(retained_count, "retenue", "retenues")
-    analyzed = _counted_publications(total_count, "analysée", "analysées")
-    excluded = _counted_publications(excluded_count, "écartée", "écartées")
-    return "{} sur {} ; {}.".format(retained.capitalize(), analyzed, excluded)
+def _filtered_summary(retained_count, total_count):
+    retained = _counted_articles(retained_count, "retenu", "retenus")
+    published = "{} publié{}".format(total_count, "" if total_count == 1 else "s")
+    return "{} sur {}.".format(retained.capitalize(), published)
 
 
 def _new_publications_summary(count):
@@ -314,15 +311,13 @@ def render_digest(publications, total_count=None, excluded_count=0):
             body = '<tr><td height="18" style="height:18px;line-height:18px;font-size:0;">&nbsp;</td></tr>'
             body += "".join(_publication_html(publication) for publication in publications)
         if filtered:
-            summary = _filtered_summary(
-                len(publications), total_count, excluded_count
-            )
+            summary = _filtered_summary(len(publications), total_count)
         else:
             summary = _new_publications_summary(len(publications))
         preheader = publications[0].summary_fr or summary
     else:
         if excluded_count:
-            summary = _filtered_summary(0, total_count, excluded_count)
+            summary = _filtered_summary(0, total_count)
             body = _empty_html(
                 "Aucune publication pertinente retenue pour cette édition."
             )

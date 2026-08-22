@@ -424,18 +424,15 @@ class PipelineTests(unittest.TestCase):
         )
 
         self.assertIn(
-            "Aucune publication retenue sur 2 publications analysées ; "
-            "2 publications écartées.",
+            "0 articles retenus sur 2 publiés.",
             none_retained,
         )
         self.assertIn(
-            "1 publication retenue sur 1 publication analysée ; "
-            "aucune publication écartée.",
+            "1 article retenu sur 1 publié.",
             one_retained,
         )
         self.assertIn(
-            "2 publications retenues sur 3 publications analysées ; "
-            "1 publication écartée.",
+            "2 articles retenus sur 3 publiés.",
             several_retained,
         )
 
