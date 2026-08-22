@@ -95,16 +95,6 @@ password = {}
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             output = root / "environment.txt"
-            fake_python = root / "fake-python"
-            fake_python.write_text(
-                """#!/usr/bin/env bash
-printf '%s\n' "$OPENAI_API_KEY" > "$VEILLE_TEST_OUTPUT"
-printf '%s\n' "$SCIENCE_DIGEST_MAIL_PASSWORD" >> "$VEILLE_TEST_OUTPUT"
-printf '%s\n' "$SCIENCE_DIGEST_SMTP_PASSWORD" >> "$VEILLE_TEST_OUTPUT"
-""",
-                encoding="utf-8",
-            )
-            fake_python.chmod(0o700)
             (root / "openai.env").write_text(
                 "OPENAI_API_KEY=legacy-key\n", encoding="utf-8"
             )
@@ -119,13 +109,21 @@ printf '%s\n' "$SCIENCE_DIGEST_SMTP_PASSWORD" >> "$VEILLE_TEST_OUTPUT"
             environment.update(
                 {
                     "VEILLE_ROOT": str(root),
-                    "PYTHON_BIN": str(fake_python),
+                    "PYTHON_BIN": "/not-executed/python",
                     "VEILLE_TEST_OUTPUT": str(output),
                 }
             )
+            probe = r"""
+exec() {
+    printf '%s\n' "$OPENAI_API_KEY" > "$VEILLE_TEST_OUTPUT"
+    printf '%s\n' "$SCIENCE_DIGEST_MAIL_PASSWORD" >> "$VEILLE_TEST_OUTPUT"
+    printf '%s\n' "$SCIENCE_DIGEST_SMTP_PASSWORD" >> "$VEILLE_TEST_OUTPUT"
+}
+source "$1"
+"""
 
             subprocess.run(
-                ["bash", str(launcher)],
+                ["bash", "-c", probe, "launcher-probe", str(launcher)],
                 env=environment,
                 check=True,
                 capture_output=True,
