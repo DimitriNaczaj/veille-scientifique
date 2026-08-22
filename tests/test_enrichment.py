@@ -424,7 +424,7 @@ class EnrichmentPipelineTests(unittest.TestCase):
             self.assertEqual(len(analyzer.calls), 1)
             html = (root / "digest.html").read_text(encoding="utf-8")
             self.assertIn("Une expérimentation randomisée", html)
-            self.assertIn("Intérêt pour Bellegarde", html)
+            self.assertIn("Intérêts", html)
             self.assertIn("Conception de messages normatifs", html)
 
     def test_keeps_doi_pending_without_metadata_provider_by_default(self):
@@ -491,7 +491,7 @@ class EnrichmentPipelineTests(unittest.TestCase):
             self.assertEqual(report.publications_relevant, 1)
             self.assertEqual(report.publications_excluded, 0)
             html = digest.read_text(encoding="utf-8")
-            self.assertIn("À ne pas manquer", html)
+            self.assertIn("Pépites", html)
             self.assertIn("Social norms and household energy conservation", html)
             self.assertIn("Journal of Behavioral Public Policy", html)
             self.assertIn("A randomized field experiment", html)
@@ -651,7 +651,7 @@ class CommandLineTests(unittest.TestCase):
             self.assertEqual(retry.publications_new, 0)
             self.assertEqual(retry.publications_delivered, 1)
             self.assertEqual(retry.publications_pending, 0)
-            self.assertIn("À ne pas manquer", digest.read_text(encoding="utf-8"))
+            self.assertIn("Pépites", digest.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

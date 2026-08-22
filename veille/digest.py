@@ -22,8 +22,8 @@ _MONTHS_FR = (
 )
 
 _SECTION_HEADINGS = {
-    PublicationPriority.HIGH: "À ne pas manquer",
-    PublicationPriority.WATCH: "Dans le radar",
+    PublicationPriority.HIGH: "Pépites",
+    PublicationPriority.WATCH: "Éventuellement",
 }
 
 
@@ -54,22 +54,15 @@ def _publication_url(publication):
     return publication.url or ""
 
 
-def _text_row(label, value, css_class="ink", padding="20px 34px 0 34px"):
+def _summary_row(value):
     if not value:
         return ""
     return """
         <tr>
-          <td class="pad" style="padding:{padding};font-family:Arial,Helvetica,sans-serif;">
-            <p class="{css_class}" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;mso-line-height-rule:exactly;color:#1D1D1F;">
-              <span style="font-weight:bold;">{label} :</span> {value}
-            </p>
+          <td class="pad" style="padding:20px 34px 0 34px;font-family:Arial,Helvetica,sans-serif;">
+            <p class="ink" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;mso-line-height-rule:exactly;color:#1D1D1F;">{}</p>
           </td>
-        </tr>""".format(
-        padding=padding,
-        css_class=css_class,
-        label=escape(label),
-        value=value,
-    )
+        </tr>""".format(value)
 
 
 def _labelled_block(label, value):
@@ -123,9 +116,16 @@ def _publication_html(publication):
             escape(", ".join(publication.authors))
         )
 
-    summary = _text_row(
-        "En bref",
-        escape(publication.summary_fr) if publication.summary_fr else "",
+    doi = ""
+    if publication.doi:
+        doi = """
+            <p class="doi ink-3" style="margin:8px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">DOI : <a class="ink-3" href="{url}" style="color:#7A777D;text-decoration:underline;">{value}</a></p>""".format(
+            url=escaped_url,
+            value=escape(publication.doi),
+        )
+
+    summary = _summary_row(
+        escape(publication.summary_fr) if publication.summary_fr else ""
     )
 
     bellegarde_value = ""
@@ -136,7 +136,7 @@ def _publication_html(publication):
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" class="inset" style="width:100%;border-collapse:collapse;background:#F1F1F1;border-radius:12px;">
               <tr>
                 <td style="padding:20px 22px;font-family:Arial,Helvetica,sans-serif;">
-                  <p class="ink" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;mso-line-height-rule:exactly;color:#1D1D1F;"><span style="font-weight:bold;">Intérêt pour Bellegarde :</span> {}</p>
+                  <p class="ink" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;mso-line-height-rule:exactly;color:#1D1D1F;"><span style="font-weight:bold;">Intérêts :</span> {}</p>
                 </td>
               </tr>
             </table>
@@ -176,7 +176,7 @@ def _publication_html(publication):
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
               <tr>
                 <td class="btn" bgcolor="#1D1D1F" style="background:#1D1D1F;border-radius:999px;">
-                  <a href="{url}" style="display:block;padding:14px 26px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none;">Ouvrir l’étude&nbsp;&nbsp;→</a>
+                  <a href="{url}" style="display:block;padding:14px 26px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none;">Ouvrir l’étude</a>
                 </td>
               </tr>
             </table>
@@ -184,13 +184,7 @@ def _publication_html(publication):
         </tr>""".format(url=escaped_url)
 
     metadata = []
-    if publication.doi:
-        metadata.append(
-            '<span style="font-weight:bold;color:#57555A;">DOI :</span> {}'.format(
-                escape(publication.doi)
-            )
-        )
-    else:
+    if not publication.doi:
         metadata.append("Référence extraite sans DOI — enrichissement requis.")
     if publication.relevance_reasons:
         metadata.append(
@@ -219,8 +213,9 @@ def _publication_html(publication):
           <td class="pad" style="padding:30px 34px 8px 34px;font-family:Arial,Helvetica,sans-serif;">
             {bibliographic}
             <p style="margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:28px;mso-line-height-rule:exactly;font-weight:bold;color:#1D1D1F;">{title}</p>
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td width="44" height="3" style="width:44px;height:3px;background:#5DADE2;line-height:3px;font-size:0;">&nbsp;</td></tr></table>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td width="44" height="3" style="width:44px;height:3px;background:#6FCF97;line-height:3px;font-size:0;">&nbsp;</td></tr></table>
             {authors}
+            {doi}
           </td>
         </tr>
         {summary}
@@ -247,6 +242,7 @@ def _publication_html(publication):
         ),
         title=title_markup,
         authors=authors,
+        doi=doi,
         summary=summary,
         bellegarde_value=bellegarde_value,
         applications=applications,
@@ -258,7 +254,7 @@ def _publication_html(publication):
 
 
 def _section_html(priority, publications):
-    dot = "#5DADE2" if priority is PublicationPriority.HIGH else "#7A777D"
+    dot = "#6FCF97" if priority is PublicationPriority.HIGH else "#7A777D"
     return """
   <tr>
     <td class="pad" style="padding:18px 40px 12px 40px;font-family:Arial,Helvetica,sans-serif;">
@@ -344,16 +340,15 @@ def render_digest(publications, total_count=None, excluded_count=0):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <meta name="supported-color-schemes" content="light dark">
-<title>Veille scientifique Bellegarde — {date_iso}</title>
+<title>Veille quotidienne — {date_iso}</title>
 <!--[if mso]>
 <style>body,table,td,p,a,span{{font-family:Arial,Helvetica,sans-serif !important;}}</style>
 <![endif]-->
 <style>
   a[x-apple-data-detectors]{{color:inherit !important;text-decoration:none !important;}}
+  .logo-dark{{display:none !important;mso-hide:all;}}
   @media only screen and (max-width:620px){{
     .pad{{padding-left:20px !important;padding-right:20px !important;}}
-    .h1{{font-size:27px !important;line-height:32px !important;}}
-    .stack{{display:block !important;width:100% !important;text-align:left !important;}}
   }}
   @media (prefers-color-scheme:dark){{
     .bg{{background:#1A181C !important;}}
@@ -369,6 +364,8 @@ def render_digest(publications, total_count=None, excluded_count=0):
     .btn a{{color:#1D1D1F !important;}}
     .mark{{background:#2E4657 !important;color:#DCEBF5 !important;}}
     .chip{{border-color:#3D3B41 !important;color:#B4B1B6 !important;}}
+    .logo-light{{display:none !important;mso-hide:all !important;}}
+    .logo-dark{{display:block !important;mso-hide:none !important;}}
   }}
 </style>
 </head>
@@ -382,26 +379,8 @@ def render_digest(publications, total_count=None, excluded_count=0):
 
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:600px;border-collapse:collapse;">
   <tr>
-    <td class="pad" style="padding:0 40px 22px 40px;font-family:Arial,Helvetica,sans-serif;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;border-collapse:collapse;">
-        <tr>
-          <td class="ink stack" align="left" width="300" style="width:300px;font-family:Arial,Helvetica,sans-serif;font-size:17px;line-height:20px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.4px;color:#1D1D1F;">bellegarde</td>
-          <td class="ink-3 stack" align="right" width="220" style="width:220px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:20px;mso-line-height-rule:exactly;letter-spacing:1.1px;color:#7A777D;text-transform:uppercase;">we change behaviour</td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-  <tr>
-    <td class="pad" style="padding:0 40px;font-family:Arial,Helvetica,sans-serif;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;border-collapse:collapse;">
-        <tr><td class="rule" height="1" style="height:1px;line-height:1px;font-size:0;background:#1D1D1F;">&nbsp;</td></tr>
-      </table>
-    </td>
-  </tr>
-  <tr>
-    <td class="pad" style="padding:26px 40px 16px 40px;font-family:Arial,Helvetica,sans-serif;">
-      <p class="ink-3" style="margin:0 0 14px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;letter-spacing:1.4px;color:#7A777D;text-transform:uppercase;">Veille quotidienne &nbsp;·&nbsp; {date_label}</p>
-      <h1 class="h1 ink" style="margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;font-size:34px;line-height:40px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:-0.6px;color:#1D1D1F;">Veille scientifique Bellegarde</h1>
+    <td class="pad" style="padding:4px 40px 16px 40px;font-family:Arial,Helvetica,sans-serif;">
+      <p class="ink-3" style="margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;letter-spacing:1.4px;color:#7A777D;text-transform:uppercase;">Veille quotidienne &nbsp;·&nbsp; {date_label}</p>
       <p class="ink" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:26px;mso-line-height-rule:exactly;color:#1D1D1F;font-weight:bold;">{summary}</p>
     </td>
   </tr>
@@ -413,6 +392,8 @@ def render_digest(publications, total_count=None, excluded_count=0):
       </table>
       <p class="ink-3" style="margin:18px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">Digest généré automatiquement le {now}. Métadonnées enrichies via Crossref.</p>
       <p class="ink-3" style="margin:12px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">Bellegarde — veille interne. <a class="ink-2" href="mailto:science-digest@bellegarde.co?subject=Pr%C3%A9f%C3%A9rences%20veille" style="color:#57555A;text-decoration:underline;">Gérer la réception</a> · <a class="ink-2" href="mailto:science-digest@bellegarde.co?subject=D%C3%A9sabonnement%20veille" style="color:#57555A;text-decoration:underline;">Se désabonner</a></p>
+      <img class="logo-light" src="cid:bellegarde-logo-black" width="220" alt="Bellegarde environnement" style="display:block;width:220px;max-width:100%;height:auto;margin:28px 0 0 0;border:0;">
+      <img class="logo-dark" src="cid:bellegarde-logo-white" width="220" alt="" aria-hidden="true" style="display:none;width:220px;max-width:100%;height:auto;margin:28px 0 0 0;border:0;mso-hide:all;">
     </td>
   </tr>
 </table>

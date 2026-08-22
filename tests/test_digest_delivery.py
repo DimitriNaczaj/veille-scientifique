@@ -67,7 +67,13 @@ class DigestDeliveryTests(unittest.TestCase):
             root = Path(directory)
             config = root / "veille.ini"
             digest = root / "digest.html"
-            digest.write_text("<html><body><h1>Veille</h1></body></html>", encoding="utf-8")
+            digest.write_text(
+                "<html><body><h1>Veille</h1>"
+                '<img src="cid:bellegarde-logo-black">'
+                '<img src="cid:bellegarde-logo-white">'
+                "</body></html>",
+                encoding="utf-8",
+            )
             write_config(config)
             publication = NewPublication(
                 identity="doi:10.1234/test",
@@ -95,6 +101,8 @@ class DigestDeliveryTests(unittest.TestCase):
             message = client.messages[0]
             self.assertEqual(message["To"], "consultant@bellegarde.example")
             self.assertIn("Veille comportementale Bellegarde", message["Subject"])
+            self.assertIn("1 article", message["Subject"])
+            self.assertNotIn("(s)", message["Subject"])
             self.assertTrue(message.is_multipart())
             self.assertIn(
                 "Social norms and household energy conservation",
@@ -104,6 +112,18 @@ class DigestDeliveryTests(unittest.TestCase):
                 "<h1>Veille</h1>",
                 message.get_body(preferencelist=("html",)).get_content(),
             )
+            related_images = {
+                part["Content-ID"]: part
+                for part in message.walk()
+                if part.get_content_maintype() == "image"
+            }
+            self.assertEqual(
+                set(related_images),
+                {"<bellegarde-logo-black>", "<bellegarde-logo-white>"},
+            )
+            for image in related_images.values():
+                self.assertEqual(image.get_content_type(), "image/png")
+                self.assertTrue(image.get_payload(decode=True).startswith(b"\x89PNG"))
 
     def test_does_not_send_an_empty_digest(self):
         with tempfile.TemporaryDirectory() as directory:

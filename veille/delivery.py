@@ -14,6 +14,13 @@ from .mail_diagnostics import (
 )
 
 
+_ASSET_DIR = Path(__file__).resolve().parent.parent / "assets"
+_RELATED_IMAGES = (
+    ("bellegarde-logo-black", "logo-environnement-black.png"),
+    ("bellegarde-logo-white", "logo-environnement-white.png"),
+)
+
+
 @dataclass(frozen=True)
 class DigestDeliverySettings:
     recipient: str
@@ -57,18 +64,36 @@ def _publication_url(publication):
 
 
 def _plain_digest(publications):
-    lines = ["Veille scientifique Bellegarde", ""]
+    lines = ["Veille quotidienne", ""]
     for publication in publications:
         lines.append(publication.title or publication.doi or "Publication sans titre")
         if publication.summary_fr:
             lines.append(publication.summary_fr)
         if publication.bellegarde_value:
-            lines.append("Intérêt pour Bellegarde : " + publication.bellegarde_value)
+            lines.append("Intérêts : " + publication.bellegarde_value)
         url = _publication_url(publication)
         if url:
             lines.append(url)
         lines.append("")
     return "\n".join(lines)
+
+
+def _add_related_images(message, html):
+    html_part = message.get_body(preferencelist=("html",))
+    for content_id, filename in _RELATED_IMAGES:
+        if "cid:" + content_id not in html:
+            continue
+        path = _ASSET_DIR / filename
+        if not path.is_file():
+            raise FileNotFoundError("Logo de newsletter absent : {}".format(filename))
+        html_part.add_related(
+            path.read_bytes(),
+            maintype="image",
+            subtype="png",
+            cid="<{}>".format(content_id),
+            filename=filename,
+            disposition="inline",
+        )
 
 
 class SMTPDigestSender:
@@ -89,13 +114,19 @@ class SMTPDigestSender:
         message = EmailMessage()
         message["From"] = digest.from_address
         message["To"] = digest.recipient
-        message["Subject"] = "{} — {} — {} article(s)".format(
+        article_count = (
+            "1 article"
+            if len(publications) == 1
+            else "{} articles".format(len(publications))
+        )
+        message["Subject"] = "{} — {} — {}".format(
             digest.subject_prefix,
             date.today().isoformat(),
-            len(publications),
+            article_count,
         )
         message.set_content(_plain_digest(publications))
         message.add_alternative(html, subtype="html")
+        _add_related_images(message, html)
         client = None
         try:
             client = self.smtp_factory(smtp.host, smtp.port, timeout=30)

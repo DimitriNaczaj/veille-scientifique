@@ -352,16 +352,38 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("background:#E9E7E5", digest)
         self.assertIn("background:#1A181C !important", digest)
         self.assertIn("Veille quotidienne", digest)
-        self.assertIn("À ne pas manquer", digest)
-        self.assertIn("Intérêt pour Bellegarde", digest)
+        self.assertIn("Pépites", digest)
+        self.assertIn("Intérêts", digest)
         self.assertIn("Ouvrir l’étude", digest)
+        self.assertNotIn("Ouvrir l’étude&nbsp;&nbsp;→", digest)
+        self.assertNotIn("En bref :", digest)
+        self.assertNotIn("we change behaviour", digest)
+        self.assertNotIn(">bellegarde</td>", digest)
+        self.assertNotIn("<h1", digest)
+        self.assertNotIn("Veille scientifique Bellegarde", digest)
+        self.assertIn("#6FCF97", digest)
+        self.assertNotIn("#5DADE2", digest)
         self.assertIn('<ul class="application-list ink-2"', digest)
         self.assertIn("<li>Concevoir un message</li>", digest)
         self.assertIn("<li>Tester sur le terrain</li>", digest)
         self.assertIn('class="chip"', digest)
+        self.assertIn('src="cid:bellegarde-logo-black"', digest)
+        self.assertIn('src="cid:bellegarde-logo-white"', digest)
+        self.assertIn('alt="Bellegarde environnement"', digest)
         self.assertNotIn("12 rue de la Science", digest)
         self.assertNotIn("lorsqu’elles sont disponibles", digest)
         self.assertNotIn("(s)", digest)
+        authors_position = digest.index("Alice Martin, Bob Dupont")
+        doi_position = digest.index('class="doi ink-3"')
+        summary_position = digest.index(
+            "Les normes sociales influencent les choix durables.", doi_position
+        )
+        self.assertLess(authors_position, doi_position)
+        self.assertLess(doi_position, summary_position)
+        self.assertIn(
+            'href="https://doi.org/10.1234/design"',
+            digest[doi_position:summary_position],
+        )
 
         watch_digest = render_digest(
             (
@@ -376,7 +398,7 @@ class PipelineTests(unittest.TestCase):
                 ),
             )
         )
-        self.assertIn("Dans le radar", watch_digest)
+        self.assertIn("Éventuellement", watch_digest)
         self.assertNotIn("À surveiller", watch_digest)
 
     def test_digest_uses_natural_french_agreements_for_counts(self):
