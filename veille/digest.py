@@ -57,7 +57,7 @@ def _summary_row(value):
     return """
         <tr>
           <td class="pad" style="padding:20px 34px 0 34px;font-family:Arial,Helvetica,sans-serif;">
-            <p class="ink" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;mso-line-height-rule:exactly;color:#1D1D1F;">{}</p>
+            <p class="article-summary ink" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;mso-line-height-rule:exactly;color:#1D1D1F;">{}</p>
           </td>
         </tr>""".format(value)
 
@@ -68,8 +68,8 @@ def _labelled_block(label, value):
     return """
         <tr>
           <td class="pad" style="padding:24px 34px 0 34px;font-family:Arial,Helvetica,sans-serif;">
-            <p class="ink-3" style="margin:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;letter-spacing:1.4px;color:#7A777D;text-transform:uppercase;">{label}</p>
-            <p class="ink-2" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:24px;mso-line-height-rule:exactly;color:#57555A;">{value}</p>
+            <p class="article-label ink-3" style="margin:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;letter-spacing:1.4px;color:#7A777D;text-transform:uppercase;">{label}</p>
+            <p class="article-detail ink-2" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:24px;mso-line-height-rule:exactly;color:#57555A;">{value}</p>
           </td>
         </tr>""".format(label=escape(label), value=value)
 
@@ -81,7 +81,7 @@ def _applications_block(applications):
     return """
         <tr>
           <td class="pad" style="padding:24px 34px 0 34px;font-family:Arial,Helvetica,sans-serif;">
-            <p class="ink-3" style="margin:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;letter-spacing:1.4px;color:#7A777D;text-transform:uppercase;">Applications</p>
+            <p class="article-label ink-3" style="margin:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;letter-spacing:1.4px;color:#7A777D;text-transform:uppercase;">Applications</p>
             <ul class="application-list ink-2" style="margin:0;padding:0 0 0 20px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:24px;mso-line-height-rule:exactly;color:#57555A;">{}</ul>
           </td>
         </tr>""".format(items)
@@ -109,7 +109,7 @@ def _publication_html(publication):
     authors = ""
     if publication.authors:
         authors = """
-            <p class="ink-2" style="margin:16px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#57555A;">{}</p>""".format(
+            <p class="article-authors ink-2" style="margin:16px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#57555A;">{}</p>""".format(
             escape(", ".join(publication.authors))
         )
 
@@ -133,7 +133,7 @@ def _publication_html(publication):
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" class="inset" style="width:100%;border-collapse:collapse;background:#F1F1F1;border-radius:12px;">
               <tr>
                 <td style="padding:20px 22px;font-family:Arial,Helvetica,sans-serif;">
-                  <p class="ink" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;mso-line-height-rule:exactly;color:#1D1D1F;"><span style="font-weight:bold;">Intérêts :</span> {}</p>
+                  <p class="article-interest ink" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:25px;mso-line-height-rule:exactly;color:#1D1D1F;"><span style="font-weight:bold;">Intérêts :</span> {}</p>
                 </td>
               </tr>
             </table>
@@ -153,14 +153,17 @@ def _publication_html(publication):
         themes = _labelled_block("Thèmes", chips)
 
     abstract = ""
-    if publication.abstract:
+    if (
+        publication.abstract
+        and publication.priority is not PublicationPriority.WATCH
+    ):
         abstract = """
         <tr>
           <td class="pad" style="padding:26px 34px 0 34px;font-family:Arial,Helvetica,sans-serif;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;border-collapse:collapse;">
               <tr><td class="rule" height="1" style="height:1px;line-height:1px;font-size:0;background:#E4E1DE;">&nbsp;</td></tr>
             </table>
-            <p class="ink-3" style="margin:20px 0 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;letter-spacing:1.4px;color:#7A777D;text-transform:uppercase;">Abstract</p>
+            <p class="article-label ink-3" style="margin:20px 0 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;letter-spacing:1.4px;color:#7A777D;text-transform:uppercase;">Abstract</p>
             <p class="ink-2 abstract" style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:15px;line-height:27px;mso-line-height-rule:exactly;color:#57555A;">{}</p>
           </td>
         </tr>""".format(escape(publication.abstract))
@@ -196,7 +199,7 @@ def _publication_html(publication):
         )
     )
     metadata_markup = "".join(
-        '<p class="ink-3" style="margin:0 0 4px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">{}</p>'.format(
+        '<p class="article-metadata ink-3" style="margin:0 0 4px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">{}</p>'.format(
             line
         )
         for line in metadata
@@ -209,7 +212,7 @@ def _publication_html(publication):
         <tr>
           <td class="pad" style="padding:30px 34px 8px 34px;font-family:Arial,Helvetica,sans-serif;">
             {bibliographic}
-            <p style="margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:28px;mso-line-height-rule:exactly;font-weight:bold;color:#1D1D1F;">{title}</p>
+            <p class="article-title" style="margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:28px;mso-line-height-rule:exactly;font-weight:bold;color:#1D1D1F;">{title}</p>
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td width="44" height="3" style="width:44px;height:3px;background:#6FCF97;line-height:3px;font-size:0;">&nbsp;</td></tr></table>
             {authors}
             {doi}
@@ -231,7 +234,7 @@ def _publication_html(publication):
   </tr>
   <tr><td height="16" style="height:16px;line-height:16px;font-size:0;">&nbsp;</td></tr>""".format(
         bibliographic=(
-            '<p class="ink-3" style="margin:0 0 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:16px;mso-line-height-rule:exactly;color:#7A777D;">{}</p>'.format(
+            '<p class="article-kicker ink-3" style="margin:0 0 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:16px;mso-line-height-rule:exactly;color:#7A777D;">{}</p>'.format(
                 bibliographic
             )
             if bibliographic
@@ -347,6 +350,13 @@ def render_digest(publications, total_count=None, excluded_count=0):
   @media only screen and (max-width:620px){{
     .pad{{padding-left:20px !important;padding-right:20px !important;}}
     .h1{{font-size:27px !important;line-height:32px !important;}}
+    .digest-meta{{font-size:15px !important;line-height:22px !important;}}
+    .article-kicker,.article-authors,.doi,.article-metadata{{font-size:14px !important;line-height:22px !important;}}
+    .article-title{{font-size:22px !important;line-height:30px !important;}}
+    .article-summary,.article-interest,.application-list,.article-detail{{font-size:16px !important;line-height:26px !important;}}
+    .abstract{{font-size:16px !important;line-height:29px !important;}}
+    .article-label{{font-size:12px !important;line-height:16px !important;}}
+    .btn a{{font-size:16px !important;line-height:20px !important;}}
   }}
   @media (prefers-color-scheme:dark){{
     .bg{{background:#1A181C !important;}}

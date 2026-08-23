@@ -360,6 +360,18 @@ class PipelineTests(unittest.TestCase):
         )
         self.assertIn("font-size:34px", digest)
         self.assertIn("font-size:24px", digest)
+        self.assertIn(
+            ".article-title{font-size:22px !important;line-height:30px !important;}",
+            digest,
+        )
+        self.assertIn(
+            ".article-summary,.article-interest,.application-list,.article-detail{font-size:16px !important;line-height:26px !important;}",
+            digest,
+        )
+        self.assertIn(
+            ".digest-meta{font-size:15px !important;line-height:22px !important;}",
+            digest,
+        )
         self.assertIn("width:11px", digest)
         self.assertIn("Pépites", digest)
         self.assertIn("Intérêts", digest)
@@ -393,7 +405,10 @@ class PipelineTests(unittest.TestCase):
             'href="https://doi.org/10.1234/design"',
             digest[doi_position:summary_position],
         )
+        self.assertIn("An abstract about social norms.", digest)
 
+        watch_summary = "Résumé IA à conserver dans Éventuellement."
+        watch_abstract = "Abstract brut à masquer dans Éventuellement."
         watch_digest = render_digest(
             (
                 NewPublication(
@@ -403,12 +418,17 @@ class PipelineTests(unittest.TestCase):
                     url=None,
                     source_subject="Alerte scientifique",
                     source_sender="éditeur@example.org",
+                    abstract=watch_abstract,
                     priority=PublicationPriority.WATCH,
+                    summary_fr=watch_summary,
                 ),
             )
         )
         self.assertIn("Éventuellement", watch_digest)
         self.assertNotIn("À surveiller", watch_digest)
+        self.assertIn(watch_summary, watch_digest)
+        self.assertNotIn(watch_abstract, watch_digest)
+        self.assertNotIn(">Abstract</p>", watch_digest)
 
     def test_digest_uses_natural_french_agreements_for_counts(self):
         publication = NewPublication(
