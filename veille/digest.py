@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from html import escape
 from urllib.parse import quote
 
@@ -43,6 +43,20 @@ def _new_publications_summary(count):
     if count == 1:
         return "1 nouvelle publication détectée."
     return "{} nouvelles publications détectées.".format(count)
+
+
+def _last_sunday_at_one_utc(year, month):
+    month_end = datetime(year, month, 31, 1, tzinfo=timezone.utc)
+    days_since_sunday = (month_end.weekday() + 1) % 7
+    return month_end - timedelta(days=days_since_sunday)
+
+
+def _paris_now():
+    utc_now = datetime.now(timezone.utc).replace(microsecond=0)
+    summer_time_starts = _last_sunday_at_one_utc(utc_now.year, 3)
+    summer_time_ends = _last_sunday_at_one_utc(utc_now.year, 10)
+    offset_hours = 2 if summer_time_starts <= utc_now < summer_time_ends else 1
+    return (utc_now + timedelta(hours=offset_hours)).replace(tzinfo=None)
 
 
 def _publication_url(publication):
@@ -104,13 +118,16 @@ def _publication_html(publication):
         details.append(escape(publication.journal))
     if publication.published_date:
         details.append(escape(publication.published_date))
-    bibliographic = " — ".join(details)
+    bibliographic = " – ".join(details)
 
     authors = ""
     if publication.authors:
+        displayed_authors = ", ".join(publication.authors[:3])
+        if len(publication.authors) > 3:
+            displayed_authors += " et al."
         authors = """
             <p class="article-authors ink-2" style="margin:16px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#57555A;">{}</p>""".format(
-            escape(", ".join(publication.authors))
+            escape(displayed_authors)
         )
 
     doi = ""
@@ -145,7 +162,7 @@ def _publication_html(publication):
     themes = ""
     if publication.themes:
         chips = "&nbsp; ".join(
-            '<span class="chip" style="border:1px solid #DEDBD8;border-radius:20px;padding:4px 11px;white-space:nowrap;">{}</span>'.format(
+            '<span class="chip" style="display:inline-block;line-height:18px;margin:0 0 8px 0;border:1px solid #DEDBD8;border-radius:20px;padding:5px 11px;white-space:nowrap;">{}</span>'.format(
                 escape(theme)
             )
             for theme in publication.themes
@@ -185,7 +202,7 @@ def _publication_html(publication):
 
     metadata = []
     if not publication.doi:
-        metadata.append("Référence extraite sans DOI — enrichissement requis.")
+        metadata.append("Référence extraite sans DOI – enrichissement requis.")
     if publication.relevance_reasons:
         metadata.append(
             '<span style="font-weight:bold;color:#57555A;">Repéré pour :</span> {}'.format(
@@ -193,7 +210,7 @@ def _publication_html(publication):
             )
         )
     metadata.append(
-        "Signalé dans «&nbsp;{}&nbsp;» — {}".format(
+        "Signalé dans «&nbsp;{}&nbsp;» – {}".format(
             escape(publication.source_subject),
             escape(publication.source_sender),
         )
@@ -288,9 +305,9 @@ def _empty_html(message):
 
 def render_digest(publications, total_count=None, excluded_count=0):
     publications = tuple(publications)
-    now = datetime.now().astimezone().replace(microsecond=0)
-    now_iso = now.isoformat()
+    now = _paris_now()
     date_label = "{} {} {}".format(now.day, _MONTHS_FR[now.month - 1], now.year)
+    time_label = now.strftime("%H:%M")
     if total_count is None:
         total_count = len(publications)
     filtered = excluded_count > 0 or any(
@@ -331,14 +348,14 @@ def render_digest(publications, total_count=None, excluded_count=0):
     if len(preheader) > 180:
         preheader = preheader[:177].rstrip() + "…"
 
-    return """<!doctype html>
+    html = """<!doctype html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <meta name="supported-color-schemes" content="light dark">
-<title>Veille quotidienne — {date_iso}</title>
+<title>Veille quotidienne – {date_iso}</title>
 <!--[if mso]>
 <style>body,table,td,p,a,span{{font-family:Arial,Helvetica,sans-serif !important;}}</style>
 <![endif]-->
@@ -351,6 +368,7 @@ def render_digest(publications, total_count=None, excluded_count=0):
     .outer{{padding:20px 8px 36px !important;}}
     .shell,.card{{width:100% !important;max-width:100% !important;}}
     .pad{{padding-left:20px !important;padding-right:20px !important;}}
+    .header-pad{{padding-left:14px !important;}}
     .h1{{font-size:32px !important;line-height:38px !important;}}
     .digest-meta{{font-size:17px !important;line-height:26px !important;}}
     .section-heading{{font-size:27px !important;line-height:34px !important;}}
@@ -391,15 +409,15 @@ def render_digest(publications, total_count=None, excluded_count=0):
 
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" class="shell" style="width:600px;max-width:600px;border-collapse:collapse;">
   <tr>
-    <td class="pad" style="padding:6px 40px 0 40px;font-family:Arial,Helvetica,sans-serif;">
+    <td class="header-pad pad" style="padding:6px 40px 0 34px;font-family:Arial,Helvetica,sans-serif;">
       <h1 class="h1 ink" style="margin:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:34px;line-height:40px;mso-line-height-rule:exactly;color:#1D1D1F;font-weight:bold;">Veille scientifique</h1>
-      <p class="digest-meta ink-3" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">{date_label}&nbsp;–&nbsp; <span class="ink-2" style="color:#57555A;">{summary}</span></p>
+      <p class="digest-meta ink-3" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">{date_label}&nbsp;&nbsp;–&nbsp;&nbsp;<span class="ink-2" style="color:#57555A;">{summary}</span></p>
     </td>
   </tr>
   {body}
   <tr>
     <td class="pad" align="left" style="padding:40px 40px 0 40px;font-family:Arial,Helvetica,sans-serif;">
-      <img class="logo-light" src="cid:bellegarde-logo-black" width="250" height="49" alt="Bellegarde — we change behaviour" style="display:block;width:250px;max-width:100%;height:auto;border:0;">
+      <img class="logo-light" src="cid:bellegarde-logo-black" width="250" height="49" alt="Bellegarde – we change behaviour" style="display:block;width:250px;max-width:100%;height:auto;border:0;">
       <img class="logo-dark" src="cid:bellegarde-logo-white" width="250" height="49" alt="" aria-hidden="true" style="display:none;width:250px;max-width:100%;height:auto;border:0;max-height:0;overflow:hidden;mso-hide:all;">
     </td>
   </tr>
@@ -408,8 +426,8 @@ def render_digest(publications, total_count=None, excluded_count=0):
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;border-collapse:collapse;">
         <tr><td class="rule" height="1" style="height:1px;line-height:1px;font-size:0;background:#D6D3D0;">&nbsp;</td></tr>
       </table>
-      <p class="footer-copy ink-3" style="margin:18px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">Digest généré automatiquement le {now}. Métadonnées enrichies via Crossref.</p>
-      <p class="footer-copy ink-3" style="margin:12px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">Bellegarde — veille interne. <a class="ink-2" href="mailto:science-digest@bellegarde.co?subject=Pr%C3%A9f%C3%A9rences%20veille" style="color:#57555A;text-decoration:underline;">Gérer la réception</a> · <a class="ink-2" href="mailto:science-digest@bellegarde.co?subject=D%C3%A9sabonnement%20veille" style="color:#57555A;text-decoration:underline;">Se désabonner</a></p>
+      <p class="footer-copy ink-3" style="margin:18px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">Généré le {date_label} à {time_label}.</p>
+      <p class="footer-copy ink-3" style="margin:12px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;"><a class="ink-2" href="mailto:science-digest@bellegarde.co?subject=Pr%C3%A9f%C3%A9rences%20veille" style="color:#57555A;text-decoration:underline;">Gérer la réception</a> · <a class="ink-2" href="mailto:science-digest@bellegarde.co?subject=D%C3%A9sabonnement%20veille" style="color:#57555A;text-decoration:underline;">Se désabonner</a></p>
     </td>
   </tr>
 </table>
@@ -425,8 +443,9 @@ def render_digest(publications, total_count=None, excluded_count=0):
         preheader=escape(preheader),
         summary=escape(summary),
         body=body,
-        now=escape(now_iso),
+        time_label=escape(time_label),
     )
+    return html
 
 
 def write_digest(path, publications, total_count=None, excluded_count=0):

@@ -2,6 +2,7 @@ import base64
 import sqlite3
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from email.message import EmailMessage
 from pathlib import Path
 from unittest.mock import patch
@@ -335,7 +336,7 @@ class PipelineTests(unittest.TestCase):
             abstract="An abstract about social norms.",
             journal="Journal of Behaviour",
             published_date="2026-08-22",
-            authors=("Alice Martin", "Bob Dupont"),
+            authors=("Alice Martin", "Bob Dupont", "Claire Durand", "David Leroy"),
             relevance_reasons=("normes sociales", "intervention"),
             priority=PublicationPriority.HIGH,
             summary_fr="Les normes sociales influencent les choix durables.",
@@ -354,8 +355,16 @@ class PipelineTests(unittest.TestCase):
         self.assertIn(">Veille scientifique</h1>", digest)
         self.assertIn('class="digest-meta ink-3"', digest)
         self.assertIn(
-            '&nbsp;–&nbsp; <span class="ink-2" '
+            '&nbsp;&nbsp;–&nbsp;&nbsp;<span class="ink-2" '
             'style="color:#57555A;">1 article retenu sur 2 publiés.</span>',
+            digest,
+        )
+        self.assertIn(
+            'class="header-pad pad" style="padding:6px 40px 0 34px;',
+            digest,
+        )
+        self.assertIn(
+            ".header-pad{padding-left:14px !important;}",
             digest,
         )
         self.assertIn("font-size:34px", digest)
@@ -395,14 +404,22 @@ class PipelineTests(unittest.TestCase):
         self.assertIn('<ul class="application-list ink-2"', digest)
         self.assertIn("<li>Concevoir un message</li>", digest)
         self.assertIn("<li>Tester sur le terrain</li>", digest)
-        self.assertIn('class="chip"', digest)
+        self.assertIn(
+            'class="chip" style="display:inline-block;line-height:18px;'
+            'margin:0 0 8px 0;',
+            digest,
+        )
         self.assertIn('src="cid:bellegarde-logo-black"', digest)
         self.assertIn('src="cid:bellegarde-logo-white"', digest)
-        self.assertIn('alt="Bellegarde — we change behaviour"', digest)
+        self.assertIn('alt="Bellegarde – we change behaviour"', digest)
         self.assertNotIn("12 rue de la Science", digest)
         self.assertNotIn("lorsqu’elles sont disponibles", digest)
         self.assertNotIn("(s)", digest)
-        authors_position = digest.index("Alice Martin, Bob Dupont")
+        self.assertIn("Alice Martin, Bob Dupont, Claire Durand et al.", digest)
+        self.assertNotIn("David Leroy", digest)
+        authors_position = digest.index(
+            "Alice Martin, Bob Dupont, Claire Durand et al."
+        )
         doi_position = digest.index('class="doi ink-3"')
         summary_position = digest.index(
             "Les normes sociales influencent les choix durables.", doi_position
@@ -414,6 +431,25 @@ class PipelineTests(unittest.TestCase):
             digest[doi_position:summary_position],
         )
         self.assertIn("An abstract about social norms.", digest)
+        self.assertRegex(
+            digest,
+            r"Généré le \d{1,2} [a-zéû]+ \d{4} à \d{2}:\d{2}\.",
+        )
+        self.assertNotIn("Digest généré automatiquement", digest)
+        self.assertNotIn("Métadonnées enrichies via Crossref", digest)
+        self.assertNotIn("Bellegarde – veille interne", digest)
+        self.assertNotIn("Bellegarde - veille interne", digest)
+        self.assertNotIn("—", digest)
+
+        class FixedUtcDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                instant = datetime(2026, 8, 23, 12, 5, tzinfo=timezone.utc)
+                return instant.astimezone(tz) if tz else instant
+
+        with patch("veille.digest.datetime", FixedUtcDateTime):
+            paris_digest = render_digest((publication,))
+        self.assertIn("Généré le 23 août 2026 à 14:05.", paris_digest)
 
         watch_summary = "Résumé IA à conserver dans Éventuellement."
         watch_abstract = "Abstract brut à masquer dans Éventuellement."
