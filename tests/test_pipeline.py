@@ -361,15 +361,23 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("font-size:34px", digest)
         self.assertIn("font-size:24px", digest)
         self.assertIn(
-            ".article-title{font-size:22px !important;line-height:30px !important;}",
+            ".shell,.card{width:100% !important;max-width:100% !important;}",
             digest,
         )
         self.assertIn(
-            ".article-summary,.article-interest,.application-list,.article-detail{font-size:16px !important;line-height:26px !important;}",
+            ".article-title{font-size:26px !important;line-height:34px !important;}",
             digest,
         )
         self.assertIn(
-            ".digest-meta{font-size:15px !important;line-height:22px !important;}",
+            ".article-summary,.article-interest,.application-list,.article-detail{font-size:18px !important;line-height:29px !important;}",
+            digest,
+        )
+        self.assertIn(
+            ".digest-meta{font-size:17px !important;line-height:26px !important;}",
+            digest,
+        )
+        self.assertIn(
+            ".article-kicker,.article-authors,.doi,.article-metadata{font-size:16px !important;line-height:24px !important;}",
             digest,
         )
         self.assertIn("width:11px", digest)

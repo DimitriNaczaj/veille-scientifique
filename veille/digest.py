@@ -263,7 +263,7 @@ def _section_html(priority, publications):
           <td width="11" style="width:11px;padding:0 12px 0 0;line-height:0;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="11" style="width:11px;border-collapse:collapse;"><tr><td width="11" height="11" style="width:11px;height:11px;background:{dot};border-radius:11px;line-height:11px;font-size:0;">&nbsp;</td></tr></table>
           </td>
-          <td class="ink" style="font-family:Arial,Helvetica,sans-serif;font-size:24px;line-height:30px;mso-line-height-rule:exactly;font-weight:bold;color:#1D1D1F;">{heading}</td>
+          <td class="section-heading ink" style="font-family:Arial,Helvetica,sans-serif;font-size:24px;line-height:30px;mso-line-height-rule:exactly;font-weight:bold;color:#1D1D1F;">{heading}</td>
         </tr>
       </table>
     </td>
@@ -348,15 +348,19 @@ def render_digest(publications, total_count=None, excluded_count=0):
   .logo-light{{display:block !important;}}
   .logo-dark{{display:none !important;max-height:0 !important;overflow:hidden !important;mso-hide:all;}}
   @media only screen and (max-width:620px){{
+    .outer{{padding:20px 8px 36px !important;}}
+    .shell,.card{{width:100% !important;max-width:100% !important;}}
     .pad{{padding-left:20px !important;padding-right:20px !important;}}
-    .h1{{font-size:27px !important;line-height:32px !important;}}
-    .digest-meta{{font-size:15px !important;line-height:22px !important;}}
-    .article-kicker,.article-authors,.doi,.article-metadata{{font-size:14px !important;line-height:22px !important;}}
-    .article-title{{font-size:22px !important;line-height:30px !important;}}
-    .article-summary,.article-interest,.application-list,.article-detail{{font-size:16px !important;line-height:26px !important;}}
-    .abstract{{font-size:16px !important;line-height:29px !important;}}
-    .article-label{{font-size:12px !important;line-height:16px !important;}}
-    .btn a{{font-size:16px !important;line-height:20px !important;}}
+    .h1{{font-size:32px !important;line-height:38px !important;}}
+    .digest-meta{{font-size:17px !important;line-height:26px !important;}}
+    .section-heading{{font-size:27px !important;line-height:34px !important;}}
+    .article-kicker,.article-authors,.doi,.article-metadata{{font-size:16px !important;line-height:24px !important;}}
+    .article-title{{font-size:26px !important;line-height:34px !important;}}
+    .article-summary,.article-interest,.application-list,.article-detail{{font-size:18px !important;line-height:29px !important;}}
+    .abstract{{font-size:18px !important;line-height:31px !important;}}
+    .article-label{{font-size:14px !important;line-height:20px !important;}}
+    .btn a{{font-size:18px !important;line-height:22px !important;}}
+    .footer-copy{{font-size:15px !important;line-height:23px !important;}}
   }}
   @media (prefers-color-scheme:dark){{
     .bg{{background:#1A181C !important;}}
@@ -383,9 +387,9 @@ def render_digest(publications, total_count=None, excluded_count=0):
 
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" class="desk" style="background:#E9E7E5;width:100%;border-collapse:collapse;">
 <tr>
-<td align="center" style="padding:32px 12px 48px 12px;">
+<td align="center" class="outer" style="padding:32px 12px 48px 12px;">
 
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:600px;border-collapse:collapse;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" class="shell" style="width:600px;max-width:600px;border-collapse:collapse;">
   <tr>
     <td class="pad" style="padding:6px 40px 0 40px;font-family:Arial,Helvetica,sans-serif;">
       <h1 class="h1 ink" style="margin:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:34px;line-height:40px;mso-line-height-rule:exactly;color:#1D1D1F;font-weight:bold;">Veille scientifique</h1>
@@ -404,8 +408,8 @@ def render_digest(publications, total_count=None, excluded_count=0):
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;border-collapse:collapse;">
         <tr><td class="rule" height="1" style="height:1px;line-height:1px;font-size:0;background:#D6D3D0;">&nbsp;</td></tr>
       </table>
-      <p class="ink-3" style="margin:18px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">Digest généré automatiquement le {now}. Métadonnées enrichies via Crossref.</p>
-      <p class="ink-3" style="margin:12px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">Bellegarde — veille interne. <a class="ink-2" href="mailto:science-digest@bellegarde.co?subject=Pr%C3%A9f%C3%A9rences%20veille" style="color:#57555A;text-decoration:underline;">Gérer la réception</a> · <a class="ink-2" href="mailto:science-digest@bellegarde.co?subject=D%C3%A9sabonnement%20veille" style="color:#57555A;text-decoration:underline;">Se désabonner</a></p>
+      <p class="footer-copy ink-3" style="margin:18px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">Digest généré automatiquement le {now}. Métadonnées enrichies via Crossref.</p>
+      <p class="footer-copy ink-3" style="margin:12px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;mso-line-height-rule:exactly;color:#7A777D;">Bellegarde — veille interne. <a class="ink-2" href="mailto:science-digest@bellegarde.co?subject=Pr%C3%A9f%C3%A9rences%20veille" style="color:#57555A;text-decoration:underline;">Gérer la réception</a> · <a class="ink-2" href="mailto:science-digest@bellegarde.co?subject=D%C3%A9sabonnement%20veille" style="color:#57555A;text-decoration:underline;">Se désabonner</a></p>
     </td>
   </tr>
 </table>
