@@ -41,7 +41,7 @@ Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque front
 27. En tant qu’exploitant du NAS, je veux plafonner le nombre d’analyses IA par exécution, afin de borner le coût et la durée.
 28. En tant que consultant Bellegarde, je veux recevoir un courriel HTML avec une alternative texte et les liens DOI ou éditeur, afin de lire la veille dans n’importe quel client mail.
 29. En tant qu’exploitant du NAS, je veux que les publications ne soient marquées comme livrées qu’après la réussite de l’envoi ou d’une exécution explicitement sans envoi, afin qu’un échec SMTP reste récupérable.
-30. En tant qu’exploitant du NAS, je veux qu’une exécution quotidienne échouée retourne un rapport JSON et un code non nul sans révéler de secret, afin de la superviser dans DSM.
+30. En tant qu’exploitant du NAS, je veux qu’une exécution quotidienne échouée retourne un code non nul et un rapport sans révéler de secret, en JSON par défaut ou dans un format humain explicitement demandé, afin de la superviser dans DSM et de la lire directement en SSH.
 31. En tant qu’exploitant du NAS, je veux pouvoir tester tout le parcours avec de faux services aux seules frontières réseau, afin de déployer avec confiance sans dépendre du réseau dans les tests.
 32. En tant que consultant Bellegarde, je veux inventorier les éditeurs et revues observés dans l’historique, afin de transférer progressivement les abonnements vers l’adresse dédiée.
 
@@ -86,7 +86,8 @@ Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque front
 - Sans clé ou lorsque l’IA est désactivée, le digest utilise la décision du préfiltre et l’abstract disponible ; cette dégradation est signalée dans le rapport.
 - Le digest contient une partie texte et une partie HTML. L’adresse destinataire est obligatoire pour un envoi réel et distincte du destinataire de test.
 - Une erreur d’enrichissement ou d’IA laisse la publication concernée en attente. Les exclusions évaluées et les articles envoyés sont marqués traités seulement après la réussite de la livraison globale.
-- La commande `daily` enchaîne synchronisation, ingestion, enrichissement, analyse, génération et livraison. `--no-send`, `--no-ai` et les plafonds permettent une validation contrôlée.
+- La commande `daily` enchaîne synchronisation, ingestion, enrichissement, analyse, génération et livraison. `--no-send`, `--no-ai` et les plafonds permettent une validation contrôlée. Sa sortie reste en JSON par défaut pour les appels automatisés ; `--format human` produit un rapport français multiligne, y compris en cas d’erreur, sans modifier le code de sortie.
+- Le lanceur NAS `scripts/run-daily.sh` demande le format humain par défaut pour rendre l’appel SSH et les journaux DSM directement lisibles. La variable `VEILLE_REPORT_FORMAT=json` rétablit la sortie machine.
 - Le Planificateur de tâches DSM lance `daily` une fois par jour avec des chemins absolus, un fichier INI en mode `600` et la clé IA dans l’environnement du compte dédié.
 
 ## Testing Decisions

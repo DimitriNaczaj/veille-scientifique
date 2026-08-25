@@ -242,7 +242,7 @@ source "$1"
                 output.read_text(encoding="utf-8"),
                 "{}\n-m\nveille\ndaily\n--config\n{}\n".format(
                     python, root / "veille-scientifique.ini"
-                ),
+                ) + "--format\nhuman\n",
             )
 
     def test_daily_launcher_skips_an_incompatible_python_candidate(self):

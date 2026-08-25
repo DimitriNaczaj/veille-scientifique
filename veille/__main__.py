@@ -10,6 +10,7 @@ from .imap_sync import run_imap_sync
 from .mbox_import import run_mbox_import
 from .mail_diagnostics import run_imap_diagnostic, run_smtp_diagnostic
 from .pipeline import run_pipeline
+from .reporting import format_daily_error, format_daily_report
 from .secret_migration import migrate_inline_mail_password, set_openai_api_key
 
 
@@ -132,6 +133,13 @@ def build_parser():
     daily.add_argument("--ai-limit", type=int, help="Remplacer la limite IA")
     daily.add_argument("--no-ai", action="store_true", help="Désactiver l’analyse IA")
     daily.add_argument("--no-send", action="store_true", help="Générer sans envoyer")
+    daily.add_argument(
+        "--format",
+        dest="report_format",
+        choices=("json", "human"),
+        default="json",
+        help="Format du rapport affiché (défaut : json)",
+    )
     return parser
 
 
@@ -207,10 +215,20 @@ def main(
                 enrichment_limit=args.enrichment_limit,
             )
     except Exception as error:
-        print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)
+        if (
+            args.command == "daily"
+            and getattr(args, "report_format", "json") == "human"
+        ):
+            print(format_daily_error(error), file=sys.stderr)
+        else:
+            print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)
         return 1
 
-    print(json.dumps(report.as_dict(), ensure_ascii=False, sort_keys=True))
+    report_payload = report.as_dict()
+    if args.command == "daily" and args.report_format == "human":
+        print(format_daily_report(report_payload))
+    else:
+        print(json.dumps(report_payload, ensure_ascii=False, sort_keys=True))
     return 1 if getattr(report, "errors", ()) else 0
 
 

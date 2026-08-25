@@ -7,6 +7,7 @@ VEILLE_ROOT=${VEILLE_ROOT:-/volume1/Bellegarde/veille-scientifique}
 CONFIG_PATH=${CONFIG_PATH:-$VEILLE_ROOT/veille-scientifique.ini}
 SECRETS_ENV=${SECRETS_ENV:-$VEILLE_ROOT/secrets.env}
 OPENAI_ENV=${OPENAI_ENV:-$VEILLE_ROOT/openai.env}
+VEILLE_REPORT_FORMAT=${VEILLE_REPORT_FORMAT:-human}
 
 if [ -z "${PYTHON_BIN:-}" ]; then
     for candidate in \
@@ -44,4 +45,6 @@ fi
 [ "${SCIENCE_DIGEST_SMTP_PASSWORD+x}" = x ] && export SCIENCE_DIGEST_SMTP_PASSWORD
 [ "${OPENAI_API_KEY+x}" = x ] && export OPENAI_API_KEY
 
-exec "$PYTHON_BIN" -m veille daily --config "$CONFIG_PATH"
+exec "$PYTHON_BIN" -m veille daily \
+    --config "$CONFIG_PATH" \
+    --format "$VEILLE_REPORT_FORMAT"

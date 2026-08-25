@@ -198,6 +198,13 @@ VEILLE_ROOT=/volume1/Bellegarde/veille-scientifique \
 Le lanceur détecte `python3.9` ou `python3` dans le `PATH`, puis les emplacements
 usuels des paquets Synology. Si nécessaire, définir explicitement `PYTHON_BIN`
 avec le chemin absolu indiqué par le Centre de paquets.
+Il affiche par défaut un rapport synthétique en français, adapté à une lecture
+SSH ou au journal du Planificateur DSM. Le rapport JSON brut reste disponible :
+
+```bash
+VEILLE_REPORT_FORMAT=json bash scripts/run-daily.sh
+```
+
 Si Python ne trouve pas les certificats système, définir `SSL_CERT_FILE` avec le
 chemin du bundle CA installé sur le NAS ; ne jamais désactiver la vérification TLS.
 Aucune tâche DSM ne doit être activée avant un passage réussi avec `--no-send`, puis
