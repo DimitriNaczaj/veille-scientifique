@@ -202,7 +202,10 @@ finish() {
 
 TOTAL_STAGES=8
 ENV_FILE="${WIZARD_STATE_FILE:-$HOME/.veille-scientifique-installer.env}"
-REPOSITORY_ARCHIVE="https://github.com/DimitriNaczaj/veille-scientifique/archive/refs/heads/main.tar.gz"
+REPOSITORY_ARCHIVE="https://api.github.com/repos/DimitriNaczaj/veille-scientifique/tarball/main"
+# Un jeton transmis par le shell parent reste utilisable par ce script, mais ne
+# doit pas être hérité automatiquement par curl, Python ou les tests lancés ensuite.
+export -n GITHUB_TOKEN 2>/dev/null || true
 umask 077
 
 banner "Installation NAS · Veille scientifique Bellegarde"
@@ -211,6 +214,10 @@ stage "Pré-requis du NAS"
 say "Vérification de Bash, Python 3.8+, SQLite, TLS et des outils d’installation."
 [[ -n "${BASH_VERSION:-}" ]] || { warn "Ce script doit être lancé avec Bash."; exit 1; }
 command -v tar >/dev/null 2>&1 || { warn "La commande tar est absente."; exit 1; }
+command -v curl >/dev/null 2>&1 || {
+  warn "curl est requis pour télécharger le dépôt GitHub privé."
+  exit 1
+}
 PYTHON_BIN=""
 for candidate in \
   "$(command -v python3.9 2>/dev/null || true)" \
@@ -263,27 +270,48 @@ write_env INSTALL_ROOT "$INSTALL_ROOT"
 chmod 600 "$ENV_FILE"
 
 stage "Téléchargement du projet"
-say "Téléchargement de la branche main depuis GitHub, sans inclure aucun secret."
+say "Téléchargement privé de la branche main depuis GitHub."
+if [[ -z "${GITHUB_TOKEN:-}" ]]; then
+  say "Le jeton doit cibler uniquement ce dépôt avec Contents en lecture seule."
+  ask_secret GITHUB_TOKEN "Jeton GitHub temporaire :"
+fi
+[[ -n "$GITHUB_TOKEN" ]] || { warn "Le jeton GitHub est obligatoire."; exit 1; }
+[[ "$GITHUB_TOKEN" != *$'\n'* && "$GITHUB_TOKEN" != *$'\r'* ]] || {
+  warn "Le jeton GitHub contient un retour à la ligne inattendu."
+  exit 1
+}
 DOWNLOAD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/veille-install.XXXXXX")
 cleanup_download() {
+  unset GITHUB_TOKEN
   if [[ -n "${DOWNLOAD_DIR:-}" && "$DOWNLOAD_DIR" == "${TMPDIR:-/tmp}"/veille-install.* ]]; then
     rm -rf -- "$DOWNLOAD_DIR"
   fi
 }
 trap cleanup_download EXIT
 ARCHIVE_PATH="$DOWNLOAD_DIR/veille.tar.gz"
-if command -v curl >/dev/null 2>&1; then
-  curl --fail --location --silent --show-error "$REPOSITORY_ARCHIVE" --output "$ARCHIVE_PATH"
-elif command -v wget >/dev/null 2>&1; then
-  wget -q "$REPOSITORY_ARCHIVE" -O "$ARCHIVE_PATH"
-else
-  "$PYTHON_BIN" -c \
-    'import sys, urllib.request; urllib.request.urlretrieve(sys.argv[1], sys.argv[2])' \
-    "$REPOSITORY_ARCHIVE" "$ARCHIVE_PATH"
+if ! printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN" | \
+  curl --config - \
+    --fail \
+    --location \
+    --silent \
+    --show-error \
+    --header "Accept: application/vnd.github+json" \
+    --header "X-GitHub-Api-Version: 2022-11-28" \
+    "$REPOSITORY_ARCHIVE" \
+    --output "$ARCHIVE_PATH"; then
+  warn "Téléchargement refusé. Vérifiez le dépôt sélectionné, la permission Contents et l’expiration du jeton."
+  exit 1
 fi
+unset GITHUB_TOKEN
 tar -xzf "$ARCHIVE_PATH" -C "$DOWNLOAD_DIR"
-SOURCE_DIR="$DOWNLOAD_DIR/veille-scientifique-main"
-[[ -f "$SOURCE_DIR/pyproject.toml" && -f "$SOURCE_DIR/veille/__main__.py" ]] || {
+SOURCE_DIR=""
+for candidate in "$DOWNLOAD_DIR"/*; do
+  if [[ -d "$candidate" && -f "$candidate/pyproject.toml" && -f "$candidate/veille/__main__.py" ]]; then
+    SOURCE_DIR="$candidate"
+    break
+  fi
+done
+[[ -n "$SOURCE_DIR" && -f "$SOURCE_DIR/pyproject.toml" && -f "$SOURCE_DIR/veille/__main__.py" ]] || {
   warn "L’archive téléchargée ne contient pas le projet attendu."
   exit 1
 }
@@ -296,7 +324,7 @@ mkdir -p \
   "$INSTALL_ROOT/out" \
   "$INSTALL_ROOT/import" \
   "$INSTALL_ROOT/smoke"
-say "Projet installé depuis GitHub."
+say "Projet privé installé depuis GitHub ; le jeton a été retiré de la session du wizard."
 
 stage "Configuration privée"
 CONFIG_PATH="$INSTALL_ROOT/veille-scientifique.ini"

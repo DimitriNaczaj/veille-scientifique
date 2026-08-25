@@ -164,13 +164,30 @@ exclus de Git.
 
 ### Assistant interactif recommandé
 
-Depuis une session SSH ouverte sur le NAS, télécharger puis lancer l’assistant :
+Le dépôt étant privé, créer d’abord un jeton GitHub *fine-grained* limité au dépôt
+`veille-scientifique`, avec la seule permission de dépôt **Contents: Read-only**.
+Depuis une session SSH ouverte sur le NAS, le saisir masqué puis télécharger et
+lancer l’assistant :
 
 ```bash
-curl -fsSL \
-  https://raw.githubusercontent.com/DimitriNaczaj/veille-scientifique/main/scripts/install-nas.sh \
-  -o /tmp/install-veille-nas.sh
-bash /tmp/install-veille-nas.sh
+umask 077
+read -rsp "Jeton GitHub : " GITHUB_TOKEN
+echo
+
+if printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN" | \
+  curl --config - \
+      --fail --location --silent --show-error \
+      --header "Accept: application/vnd.github.raw+json" \
+      --header "X-GitHub-Api-Version: 2022-11-28" \
+      "https://api.github.com/repos/DimitriNaczaj/veille-scientifique/contents/scripts/install-nas.sh?ref=main" \
+      --output /tmp/install-veille-nas.sh; then
+  GITHUB_TOKEN="$GITHUB_TOKEN" bash /tmp/install-veille-nas.sh
+  INSTALL_STATUS=$?
+else
+  INSTALL_STATUS=$?
+fi
+unset GITHUB_TOKEN
+test "$INSTALL_STATUS" -eq 0
 ```
 
 L’assistant détecte Python 3.9, télécharge le projet, crée les dossiers, demande le
@@ -178,7 +195,10 @@ mot de passe sans l’afficher, l’isole dans `secrets.env` en mode `600`, exé
 tests, vérifie IMAP/SMTP et lance une recette `--no-ai --no-send` dans une base
 séparée. L’INI ne contient alors que le nom de la variable d’environnement. Il ne
 crée et n’active aucune tâche planifiée. Une relance réutilise le dossier et peut
-conserver la configuration privée existante.
+conserver la configuration privée existante. Le jeton GitHub n’est écrit dans
+aucun fichier et est supprimé de l’environnement du wizard dès la fin du
+téléchargement. Le même jeton peut servir aux mises à jour suivantes jusqu’à son
+expiration ; il suffit ensuite d’en créer un nouveau avec les mêmes droits.
 
 ### Installation manuelle
 

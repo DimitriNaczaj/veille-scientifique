@@ -89,6 +89,7 @@ Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque front
 - La commande `daily` enchaîne synchronisation, ingestion, enrichissement, analyse, génération et livraison. `--no-send`, `--no-ai` et les plafonds permettent une validation contrôlée. Sa sortie reste en JSON par défaut pour les appels automatisés ; `--format human` produit un rapport français multiligne, y compris en cas d’erreur, sans modifier le code de sortie.
 - Le lanceur NAS `scripts/run-daily.sh` demande le format humain par défaut pour rendre l’appel SSH et les journaux DSM directement lisibles. La variable `VEILLE_REPORT_FORMAT=json` rétablit la sortie machine.
 - Le Planificateur de tâches DSM lance `daily` une fois par jour avec des chemins absolus, un fichier INI en mode `600` et la clé IA dans l’environnement du compte dédié.
+- L’installation depuis le dépôt GitHub privé utilise un jeton finement limité au seul dépôt avec `Contents: read`. Le jeton est saisi masqué, n’est jamais persisté par le wizard et est retiré avant les tests, diagnostics et exécutions quotidiennes.
 
 ## Testing Decisions
 
