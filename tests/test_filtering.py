@@ -85,17 +85,16 @@ class BehavioralScienceFilterTests(unittest.TestCase):
         self.assertIs(assessed.priority, PublicationPriority.EXCLUDED)
         self.assertIn("travail biomédical", assessed.relevance_reasons)
 
-    def test_excludes_intervention_without_human_or_behavioral_context(self):
+    def test_preserves_interventions_without_requiring_an_allowlisted_context(self):
         assessed = BehavioralScienceFilter().assess(
             publication(
-                "Food and beverage plastics dominate global shorelines: "
-                "A harmonized assessment to guide interventions"
+                "A systematic overview and second-order meta-analysis "
+                "of nature-based interventions for stress and anxiety"
             )
         )
 
-        self.assertEqual(assessed.relevance_score, 0)
-        self.assertIs(assessed.priority, PublicationPriority.EXCLUDED)
-        self.assertIn("intervention non comportementale", assessed.relevance_reasons)
+        self.assertEqual(assessed.relevance_score, 2)
+        self.assertIs(assessed.priority, PublicationPriority.WATCH)
 
     def test_excludes_biological_pathway_choice_false_positive(self):
         assessed = BehavioralScienceFilter().assess(
@@ -120,6 +119,23 @@ class BehavioralScienceFilterTests(unittest.TestCase):
         for title in titles:
             with self.subTest(title=title):
                 assessed = BehavioralScienceFilter().assess(publication(title))
+                self.assertGreaterEqual(assessed.relevance_score, 2)
+                self.assertIsNot(assessed.priority, PublicationPriority.EXCLUDED)
+
+    def test_preserves_explicit_human_context_despite_technical_vocabulary(self):
+        publications = (
+            publication("Human behaviour under thermal stress"),
+            publication("Patient decision-making in molecular medicine"),
+            publication("Protein intake and behavior among older adults"),
+            publication(
+                "Thermal behavior under stress",
+                abstract="The study follows 100 adult participants.",
+            ),
+        )
+
+        for candidate in publications:
+            with self.subTest(title=candidate.title):
+                assessed = BehavioralScienceFilter().assess(candidate)
                 self.assertGreaterEqual(assessed.relevance_score, 2)
                 self.assertIsNot(assessed.priority, PublicationPriority.EXCLUDED)
 

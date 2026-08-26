@@ -73,7 +73,7 @@ Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque front
 - Trois erreurs d’enrichissement consécutives ouvrent un coupe-circuit pour l’exécution courante.
 - Une exécution sans accès Crossref conserve les DOI non enrichis dans la file d’attente ; elle ne les marque pas comme livrés.
 - Le préfiltre attribue des points à des concepts comportementaux explicites dans le titre et l’abstract. Un score d’au moins 5 donne la priorité élevée, de 2 à 4 place l’article « À surveiller », et un score inférieur à 2 l’écarte du digest.
-- Avant d’appliquer les seuils, le préfiltre annule prudemment le score des corrections éditoriales, sommaires de revue et usages uniquement matériels, machiniques, biomédicaux ou moléculaires de `behavior`, `intervention` ou `choice`. Chaque exclusion ajoute une raison explicite et les contextes humains ou comportementaux restent candidats.
+- Avant d’appliquer les seuils, le préfiltre annule prudemment le score des corrections éditoriales, sommaires de revue et usages uniquement matériels, machiniques, biomédicaux ou moléculaires de `behavior` ou `choice`. Chaque exclusion ajoute une raison explicite ; un contexte humain explicite dans le titre ou l’abstract conserve la publication parmi les candidats.
 - Le digest d’une exécution contient uniquement les publications jamais vues auparavant.
 - Une publication reste en attente tant qu’un digest complet n’a pas été écrit ; une relance reprend ces publications après une interruption.
 - Le digest est remplacé atomiquement afin de ne jamais exposer un fichier partiellement écrit.

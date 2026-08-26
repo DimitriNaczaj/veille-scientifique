@@ -56,12 +56,10 @@ SINGLE_CONCEPT_EXCLUSIONS = (
     ),
 )
 
-HUMAN_BEHAVIORAL_CONTEXT = (
+HUMAN_SUBJECT_CONTEXT = (
     r"\b(?:human|people|person|individual|participant|patient|women|men|adult|"
     r"adolescent|child|employee|consumer|citizen|student|farmer|caregiver|"
-    r"community|household|user|social|psycholog|personality|mental|health|"
-    r"education|behaviou?r|habit|attitude|motivation|trust|choice|decision|"
-    r"willingness|engagement|communication|experiment|trial)\w*\b"
+    r"community|household|user|worker|respondent|volunteer)\w*\b"
 )
 
 
@@ -88,18 +86,12 @@ class BehavioralScienceFilter:
             for label, concept, pattern in SINGLE_CONCEPT_EXCLUSIONS:
                 if reasons == [concept] and re.search(
                     pattern, title, flags=re.IGNORECASE
+                ) and not re.search(
+                    HUMAN_SUBJECT_CONTEXT, text, flags=re.IGNORECASE
                 ):
                     score = 0
                     reasons.append(label)
                     break
-
-        if (
-            score
-            and reasons == ["intervention"]
-            and not re.search(HUMAN_BEHAVIORAL_CONTEXT, title, flags=re.IGNORECASE)
-        ):
-            score = 0
-            reasons.append("intervention non comportementale")
 
         if score >= 5:
             priority = PublicationPriority.HIGH
