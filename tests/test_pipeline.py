@@ -662,6 +662,58 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(len(pending), 1)
             self.assertEqual(pending[0].doi, "10.1234/legacy.1")
 
+    def test_migration_keeps_mbox_catalog_out_of_daily_delivery(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "legacy-mbox.sqlite"
+            connection = sqlite3.connect(str(database))
+            try:
+                connection.executescript(
+                    """
+                    CREATE TABLE messages (
+                        identity TEXT PRIMARY KEY,
+                        subject TEXT NOT NULL,
+                        sender TEXT NOT NULL,
+                        source_path TEXT NOT NULL,
+                        processed_at TEXT NOT NULL
+                    );
+                    CREATE TABLE publications (
+                        identity TEXT PRIMARY KEY,
+                        doi TEXT UNIQUE,
+                        title TEXT,
+                        url TEXT,
+                        first_seen_at TEXT NOT NULL,
+                        delivered_at TEXT
+                    );
+                    CREATE TABLE message_publications (
+                        message_identity TEXT NOT NULL,
+                        publication_identity TEXT NOT NULL,
+                        PRIMARY KEY (message_identity, publication_identity)
+                    );
+                    INSERT INTO messages VALUES (
+                        'mbox-message', 'Archive', 'éditeur@example.org',
+                        'Articles.mbox.zip#000001', '2026-08-01T00:00:00+00:00'
+                    );
+                    INSERT INTO publications VALUES (
+                        'doi:10.1234/archive', '10.1234/archive',
+                        'Article archivé', 'https://doi.org/10.1234/archive',
+                        '2026-08-01T00:00:00+00:00', NULL
+                    );
+                    INSERT INTO message_publications VALUES (
+                        'mbox-message', 'doi:10.1234/archive'
+                    );
+                    """
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            store = Store(database)
+            try:
+                self.assertEqual(store.pending_publications(), ())
+                self.assertEqual(len(store.backfill_publications()), 1)
+            finally:
+                store.close()
+
     def test_uses_content_hash_when_message_id_is_missing(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "message.eml"

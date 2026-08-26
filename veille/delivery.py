@@ -97,9 +97,10 @@ def _add_related_images(message, html):
 
 
 class SMTPDigestSender:
-    def __init__(self, config_path, smtp_factory=None):
+    def __init__(self, config_path, smtp_factory=None, subject_prefix=None):
         self.config_path = config_path
         self.smtp_factory = smtp_factory or smtplib.SMTP
+        self.subject_prefix = subject_prefix
         self.sent = False
         self.recipient = None
 
@@ -120,7 +121,7 @@ class SMTPDigestSender:
             else "{} articles".format(len(publications))
         )
         message["Subject"] = "{} — {} — {}".format(
-            digest.subject_prefix,
+            self.subject_prefix or digest.subject_prefix,
             date.today().isoformat(),
             article_count,
         )

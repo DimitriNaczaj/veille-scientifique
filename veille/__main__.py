@@ -4,13 +4,24 @@ import os
 import sys
 
 from .crossref import CrossrefClient
+from .backfill import (
+    build_backfill_plan,
+    release_backfill_reservation,
+    run_backfill,
+    run_backfill_daily,
+)
 from .daily import run_daily
 from .filtering import BehavioralScienceFilter
 from .imap_sync import run_imap_sync
 from .mbox_import import run_mbox_import
 from .mail_diagnostics import run_imap_diagnostic, run_smtp_diagnostic
 from .pipeline import run_pipeline
-from .reporting import format_daily_error, format_daily_report
+from .reporting import (
+    format_backfill_daily,
+    format_backfill_plan,
+    format_daily_error,
+    format_daily_report,
+)
 from .secret_migration import migrate_inline_mail_password, set_openai_api_key
 
 
@@ -140,6 +151,60 @@ def build_parser():
         default="json",
         help="Format du rapport affiché (défaut : json)",
     )
+    backfill_plan = subparsers.add_parser(
+        "backfill-plan",
+        help="Estimer sans IA le coût du rattrapage",
+    )
+    backfill_plan.add_argument("--database", required=True, help="Base SQLite")
+    backfill_plan.add_argument("--output", required=True, help="Plan JSON à écrire")
+    backfill_plan.add_argument("--config", help="Configuration pour enrichir sans IA")
+    backfill_plan.add_argument("--enrichment-limit", type=int, default=0)
+    backfill_plan.add_argument("--model", default="gpt-5.6-luna")
+    backfill_plan.add_argument(
+        "--profile",
+        choices=("strict", "standard", "large"),
+        default="standard",
+    )
+    backfill_plan.add_argument(
+        "--format",
+        dest="report_format",
+        choices=("json", "human"),
+        default="json",
+    )
+    backfill_run = subparsers.add_parser(
+        "backfill-run",
+        help="Exécuter un plan de rattrapage avec un budget strict",
+    )
+    backfill_run.add_argument("--config", required=True)
+    backfill_run.add_argument("--database", required=True)
+    backfill_run.add_argument("--plan", required=True)
+    backfill_run.add_argument("--output", required=True)
+    backfill_run.add_argument("--budget-usd", type=float, required=True)
+    backfill_run.add_argument("--article-limit", type=int, default=15)
+    backfill_run.add_argument("--no-send", action="store_true")
+    backfill_daily = subparsers.add_parser(
+        "backfill-daily",
+        help="Préparer ou exécuter un lot quotidien de rattrapage",
+    )
+    backfill_daily.add_argument("--config", required=True)
+    backfill_daily.add_argument(
+        "--format",
+        dest="report_format",
+        choices=("json", "human"),
+        default="json",
+    )
+    backfill_release = subparsers.add_parser(
+        "backfill-release-reservation",
+        help="Libérer une réservation IA confirmée non facturée",
+    )
+    backfill_release.add_argument("--database", required=True)
+    backfill_release.add_argument("--reservation-id", required=True, type=int)
+    backfill_release.add_argument(
+        "--confirm-unbilled",
+        action="store_true",
+        required=True,
+        help="Confirmer après vérification OpenAI que l’appel n’a pas été facturé",
+    )
     return parser
 
 
@@ -201,6 +266,40 @@ def main(
             report = run_mbox_import(
                 args.source, args.database, args.catalog, args.report
             )
+        elif args.command == "backfill-plan":
+            report = build_backfill_plan(
+                args.database,
+                args.output,
+                model=args.model,
+                profile=args.profile,
+                config_path=args.config,
+                enrichment_limit=args.enrichment_limit,
+                http_opener=http_opener,
+            )
+        elif args.command == "backfill-run":
+            report = run_backfill(
+                args.config,
+                args.database,
+                args.plan,
+                args.output,
+                args.budget_usd,
+                article_limit=args.article_limit,
+                no_send=args.no_send,
+                smtp_factory=smtp_factory,
+                ai_opener=ai_opener,
+            )
+        elif args.command == "backfill-daily":
+            report = run_backfill_daily(
+                args.config,
+                smtp_factory=smtp_factory,
+                http_opener=http_opener,
+                ai_opener=ai_opener,
+            )
+        elif args.command == "backfill-release-reservation":
+            report = release_backfill_reservation(
+                args.database,
+                args.reservation_id,
+            )
         else:
             metadata_provider = None
             if not args.no_enrichment:
@@ -224,9 +323,13 @@ def main(
             print(json.dumps({"error": str(error)}, ensure_ascii=False), file=sys.stderr)
         return 1
 
-    report_payload = report.as_dict()
+    report_payload = report if isinstance(report, dict) else report.as_dict()
     if args.command == "daily" and args.report_format == "human":
         print(format_daily_report(report_payload))
+    elif args.command == "backfill-plan" and args.report_format == "human":
+        print(format_backfill_plan(report_payload))
+    elif args.command == "backfill-daily" and args.report_format == "human":
+        print(format_backfill_daily(report_payload))
     else:
         print(json.dumps(report_payload, ensure_ascii=False, sort_keys=True))
     return 1 if getattr(report, "errors", ()) else 0

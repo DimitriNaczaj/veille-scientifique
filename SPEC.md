@@ -44,6 +44,10 @@ Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque front
 30. En tant qu’exploitant du NAS, je veux qu’une exécution quotidienne échouée retourne un code non nul et un rapport sans révéler de secret, en JSON par défaut ou dans un format humain explicitement demandé, afin de la superviser dans DSM et de la lire directement en SSH.
 31. En tant qu’exploitant du NAS, je veux pouvoir tester tout le parcours avec de faux services aux seules frontières réseau, afin de déployer avec confiance sans dépendre du réseau dans les tests.
 32. En tant que consultant Bellegarde, je veux inventorier les éditeurs et revues observés dans l’historique, afin de transférer progressivement les abonnements vers l’adresse dédiée.
+33. En tant qu’exploitant du NAS, je veux produire un plan de rattrapage sans aucun appel IA, afin de connaître le volume candidat avant toute dépense.
+34. En tant qu’exploitant du NAS, je veux voir une estimation attendue, prudente et maximale fondée sur des tarifs datés, afin de choisir un profil de filtrage en connaissance de cause.
+35. En tant qu’exploitant du NAS, je veux imposer un budget cumulé à toute la campagne et le vérifier avant chaque appel, afin qu’une succession de digests ne puisse pas contourner le plafond.
+36. En tant que consultant Bellegarde, je veux recevoir les résultats par digests de rattrapage limités et dédupliqués avec la veille quotidienne, afin de dépouiller le corpus progressivement.
 
 ## Implementation Decisions
 
@@ -90,6 +94,11 @@ Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque front
 - Le lanceur NAS `scripts/run-daily.sh` demande le format humain par défaut pour rendre l’appel SSH et les journaux DSM directement lisibles. La variable `VEILLE_REPORT_FORMAT=json` rétablit la sortie machine.
 - Le Planificateur de tâches DSM lance `daily` une fois par jour avec des chemins absolus, un fichier INI en mode `600` et la clé IA dans l’environnement du compte dédié.
 - L’installation depuis le dépôt GitHub privé utilise un jeton finement limité au seul dépôt avec `Contents: read`. Le jeton est saisi masqué, n’est jamais persisté par le wizard et est retiré avant les tests, diagnostics et exécutions quotidiennes.
+- Le rattrapage s’appuie sur les publications non livrables importées par MBOX dans la base principale. `backfill-plan` peut enrichir leurs métadonnées mais ne construit jamais de client IA et écrit un plan JSON adressé par son empreinte SHA-256.
+- Les profils `strict`, `standard` et `large` correspondent respectivement aux seuils locaux 5, 2 et 1. Un plan comportant encore des enrichissements en attente ne peut pas autoriser l’IA.
+- Les prix du modèle sont versionnés avec leur date. Le plafond budgétaire retient le tarif d’entrée le plus défavorable, y compris une éventuelle écriture de cache, et la sortie maximale configurée ; un changement de prix invalide le plan.
+- `backfill-run` exige un plan intact et un budget en dollars strictement positif. Il additionne les tokens de toutes les analyses du rattrapage déjà mises en cache avant de réserver le coût maximal du prochain appel.
+- Un digest de rattrapage contient au plus 15 articles retenus par défaut, utilise le préfixe d’objet `Rattrapage`, puis marque comme livrées les références analysées et les exclusions locales seulement après une livraison réussie ou un `--no-send` explicite.
 
 ## Testing Decisions
 

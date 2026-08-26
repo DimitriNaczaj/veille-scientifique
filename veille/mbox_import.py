@@ -39,7 +39,7 @@ def _validate_distinct_paths(paths):
                 same_file = first.samefile(second)
             if same_path or same_file:
                 raise ValueError(
-                    "Les chemins source, base, catalogue et rapport doivent être "
+                    "Les chemins des sources et artefacts doivent être "
                     "distincts (collision entre {} et {}).".format(
                         first_name, second_name
                     )

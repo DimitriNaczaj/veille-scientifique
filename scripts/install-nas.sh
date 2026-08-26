@@ -316,7 +316,10 @@ done
   exit 1
 }
 cp -R "$SOURCE_DIR"/. "$INSTALL_ROOT"/
-chmod +x "$INSTALL_ROOT/scripts/run-daily.sh" "$INSTALL_ROOT/scripts/install-nas.sh"
+chmod +x \
+  "$INSTALL_ROOT/scripts/run-daily.sh" \
+  "$INSTALL_ROOT/scripts/run-backfill.sh" \
+  "$INSTALL_ROOT/scripts/install-nas.sh"
 touch "$INSTALL_ROOT/.veille-installation"
 mkdir -p \
   "$INSTALL_ROOT/inbox" \
@@ -368,7 +371,12 @@ if [[ "$REUSE_CONFIG" == false ]]; then
       "$INSTALL_ROOT" "$INSTALL_ROOT" "$INSTALL_ROOT"
     printf 'crossref_email = %s\n' "$MAIL_USERNAME"
     printf '%s\n\n' 'sync_limit = 200' 'enrichment_limit = 100' 'ai_limit = 30'
-    printf '%s\n' '[ai]' 'enabled = true' 'model = gpt-5.6-luna' 'api_key_env = OPENAI_API_KEY'
+    printf '%s\n\n' '[ai]' 'enabled = true' 'model = gpt-5.6-luna' 'api_key_env = OPENAI_API_KEY'
+    printf '%s\n' '[backfill]' 'enabled = false'
+    printf 'plan = %s/out/rattrapage-plan.json\noutput = %s/out/rattrapage.html\n' \
+      "$INSTALL_ROOT" "$INSTALL_ROOT"
+    printf '%s\n' 'profile = standard' 'enrichment_limit = 100' \
+      'article_limit = 15' 'budget_usd = 0'
   } > "$CONFIG_TMP"
   chmod 600 "$CONFIG_TMP"
   mv "$CONFIG_TMP" "$CONFIG_PATH"
@@ -382,6 +390,16 @@ if [[ "$REUSE_CONFIG" == false ]]; then
   write_env DIGEST_RECIPIENT "$DIGEST_RECIPIENT"
   chmod 600 "$ENV_FILE"
   unset MAIL_PASSWORD
+fi
+if ! grep -q '^\[backfill\]$' "$CONFIG_PATH"; then
+  {
+    printf '\n%s\n' '[backfill]' 'enabled = false'
+    printf 'plan = %s/out/rattrapage-plan.json\noutput = %s/out/rattrapage.html\n' \
+      "$INSTALL_ROOT" "$INSTALL_ROOT"
+    printf '%s\n' 'profile = standard' 'enrichment_limit = 100' \
+      'article_limit = 15' 'budget_usd = 0'
+  } >> "$CONFIG_PATH"
+  say "Section [backfill] ajoutée, désactivée et sans budget IA."
 fi
 chmod 600 "$CONFIG_PATH"
 if [[ "$REUSE_CONFIG" == true ]]; then
@@ -457,6 +475,10 @@ TASK_COMMAND_FILE="$INSTALL_ROOT/DSM_TASK_COMMAND.txt"
 printf "VEILLE_ROOT='%s' PYTHON_BIN='%s' '%s/scripts/run-daily.sh'\n" \
   "$INSTALL_ROOT" "$PYTHON_BIN" "$INSTALL_ROOT" > "$TASK_COMMAND_FILE"
 chmod 600 "$TASK_COMMAND_FILE"
+BACKFILL_TASK_COMMAND_FILE="$INSTALL_ROOT/DSM_BACKFILL_TASK_COMMAND.txt"
+printf "VEILLE_ROOT='%s' PYTHON_BIN='%s' '%s/scripts/run-backfill.sh'\n" \
+  "$INSTALL_ROOT" "$PYTHON_BIN" "$INSTALL_ROOT" > "$BACKFILL_TASK_COMMAND_FILE"
+chmod 600 "$BACKFILL_TASK_COMMAND_FILE"
 step "Après sécurisation des secrets, ouvrez DSM → Panneau de configuration → Planificateur de tâches."
 step "Créez une tâche définie par l’utilisateur et copiez la commande de $TASK_COMMAND_FILE."
 warn "N’activez pas encore cette tâche : nous sécuriserons d’abord le mot de passe et ajouterons la clé OpenAI."
@@ -466,3 +488,4 @@ note "Installation : $INSTALL_ROOT"
 note "Configuration privée : $CONFIG_PATH"
 note "Dernière recette : $SMOKE_ROOT"
 note "Commande DSM préparée : $TASK_COMMAND_FILE"
+note "Commande DSM de rattrapage préparée : $BACKFILL_TASK_COMMAND_FILE"

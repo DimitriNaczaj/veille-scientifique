@@ -19,6 +19,7 @@ Application de veille scientifique autonome et légère pour Synology DS218.
 - diagnostic IMAP en lecture seule et diagnostic SMTP avec envoi test optionnel ;
 - relance idempotente ;
 - séparation stricte entre le catalogue historique et la file quotidienne livrable ;
+- rattrapage contrôlé avec estimation sans IA, budget cumulé et digests limités ;
 - aucune dépendance Python externe.
 
 Une référence sans DOI est conservée provisoirement à partir de son titre normalisé.
@@ -115,6 +116,113 @@ distincts ; la commande refuse une collision avant toute écriture.
 Les exports MBOX, catalogues et rapports locaux sont exclus de Git. Ils peuvent
 contenir des titres, des expéditeurs ou des liens personnalisés et doivent rester
 dans un partage NAS à accès restreint.
+
+## Rattrapage
+
+Le rattrapage réutilise le catalogue MBOX dans la base principale : les DOI, titres,
+métadonnées et analyses déjà connus restent dédupliqués avec la veille quotidienne.
+Il se déroule obligatoirement en deux temps. La création du plan n’instancie jamais
+l’analyseur OpenAI, même si la clé est chargée dans l’environnement.
+
+Importer d’abord l’archive dans la base de production. Cette opération locale est
+idempotente et ne rend encore aucune publication livrable :
+
+```bash
+python3 -m veille import-mbox \
+  --source import/Articles.mbox.zip \
+  --database data/veille.sqlite \
+  --catalog out/catalog.csv \
+  --report out/import-report.json
+```
+
+Créer ensuite un premier plan lisible, sans enrichissement et sans IA :
+
+```bash
+python3 -m veille backfill-plan \
+  --database data/veille.sqlite \
+  --output out/rattrapage-plan.json \
+  --profile standard \
+  --format human
+```
+
+Pour une estimation fondée sur les abstracts, enrichir gratuitement par lots. La
+commande peut être relancée : le cache évite les appels déjà réussis et aucun appel
+OpenAI n’est effectué. Attendre que le rapport affiche `Prêt pour l’IA  oui` :
+
+```bash
+python3 -m veille backfill-plan \
+  --config veille-scientifique.ini \
+  --database data/veille.sqlite \
+  --output out/rattrapage-plan.json \
+  --profile standard \
+  --enrichment-limit 100 \
+  --format human
+```
+
+Le plan compare une consommation attendue, prudente et maximale. Les tarifs figés
+pour `gpt-5.6-luna` sont datés dans le plan : 0,20 $ par million de tokens d’entrée,
+0,25 $ comme plafond d’entrée incluant une éventuelle écriture de cache, et 1,20 $
+par million de tokens de sortie. Si la table de prix du programme change, un ancien
+plan est refusé.
+
+Une fois le plan contrôlé, autoriser explicitement un budget total pour toute la
+campagne. Ce plafond est cumulatif entre les digests ; la consommation enregistrée
+dans SQLite est déduite avant chaque nouvel appel :
+
+```bash
+python3 -m veille backfill-run \
+  --config veille-scientifique.ini \
+  --database data/veille.sqlite \
+  --plan out/rattrapage-plan.json \
+  --output out/rattrapage.html \
+  --budget-usd 1.00 \
+  --article-limit 15
+```
+
+Le mail porte le préfixe `Rattrapage`. Après chaque digest, régénérer le plan pour
+le lot restant. `--no-send` est réservé à une base de recette : comme pour `daily`,
+les références traitées y sont marquées livrées.
+
+### Automatiser le rattrapage sur le NAS
+
+Le wizard installe aussi `scripts/run-backfill.sh` et prépare
+`DSM_BACKFILL_TASK_COMMAND.txt`. Cette tâche doit rester distincte de la veille
+quotidienne. Avec la configuration installée par défaut, elle enrichit jusqu’à 100
+publications par passage et actualise le plan, sans IA et sans envoi :
+
+```ini
+[backfill]
+enabled = false
+plan = /volume1/Bellegarde/veille-scientifique/out/rattrapage-plan.json
+output = /volume1/Bellegarde/veille-scientifique/out/rattrapage.html
+profile = standard
+enrichment_limit = 100
+article_limit = 15
+budget_usd = 0
+```
+
+Après lecture du plan, renseigner le plafond total dans `budget_usd`, puis passer
+`enabled` à `true`. Le commutateur global `[ai] enabled` doit lui aussi rester à
+`true` ; mettre l’un des deux à `false` suspend les appels. Chaque déclenchement
+produit au plus `article_limit` analyses ;
+la tâche s’arrête avant tout appel qui pourrait dépasser le budget cumulé. La
+remettre à `false` suspend immédiatement les appels IA suivants sans perdre l’état.
+
+Avant chaque requête, l’application réserve dans SQLite son coût maximal. Une
+réponse interrompue conserve cette réservation par prudence, mais les autres
+articles continuent à être traités. Si le tableau d’usage OpenAI confirme que
+l’appel interrompu n’a pas été facturé, la réservation peut être libérée de façon
+explicite puis l’article repris :
+
+```bash
+python3 -m veille backfill-release-reservation \
+  --database data/veille.sqlite \
+  --reservation-id 123 \
+  --confirm-unbilled
+```
+
+Ne lancer cette commande qu’après vérification de l’usage côté OpenAI : elle rend
+le montant réservé au budget de campagne et autorise une nouvelle tentative.
 
 L’inventaire des 1 358 newsletters, des plateformes et des 68 titres observés est
 disponible dans [`docs/newsletter-inventory.md`](docs/newsletter-inventory.md).

@@ -81,8 +81,23 @@ CREATE TABLE IF NOT EXISTS publication_ai_assessments (
     checked_at TEXT NOT NULL,
     PRIMARY KEY (publication_identity, model, prompt_version)
 );
+
+CREATE TABLE IF NOT EXISTS backfill_budget_reservations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    publication_identity TEXT NOT NULL REFERENCES publications(identity),
+    model TEXT NOT NULL,
+    prompt_version TEXT NOT NULL,
+    cost_upper_bound_usd REAL NOT NULL,
+    releasable_cost_usd REAL NOT NULL DEFAULT 0,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(publication_identity, model, prompt_version)
+);
 """
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 8
 
 
 def _utc_now():
@@ -167,6 +182,17 @@ class Store:
                 " WHERE mp.publication_identity = publications.identity "
                 " AND m.source_path NOT GLOB '*#[0-9][0-9][0-9][0-9][0-9][0-9]'"
                 ")"
+            )
+        reservation_columns = {
+            row[1]
+            for row in self.connection.execute(
+                "PRAGMA table_info(backfill_budget_reservations)"
+            )
+        }
+        if "releasable_cost_usd" not in reservation_columns:
+            self.connection.execute(
+                "ALTER TABLE backfill_budget_reservations ADD COLUMN "
+                "releasable_cost_usd REAL NOT NULL DEFAULT 0"
             )
         if schema_version < SCHEMA_VERSION:
             self._backfill_title_aliases()
@@ -428,6 +454,57 @@ class Store:
             "DELETE FROM publication_ai_assessments WHERE publication_identity = ?",
             (provisional_identity,),
         )
+        reservations = self.connection.execute(
+            "SELECT id, model, prompt_version, cost_upper_bound_usd, "
+            "releasable_cost_usd, "
+            "input_tokens, output_tokens, status, created_at, updated_at "
+            "FROM backfill_budget_reservations WHERE publication_identity = ?",
+            (provisional_identity,),
+        ).fetchall()
+        for reservation in reservations:
+            existing = self.connection.execute(
+                "SELECT id, cost_upper_bound_usd, releasable_cost_usd, "
+                "input_tokens, output_tokens, status "
+                "FROM backfill_budget_reservations "
+                "WHERE publication_identity = ? AND model = ? "
+                "AND prompt_version = ?",
+                (candidate.identity, reservation[1], reservation[2]),
+            ).fetchone()
+            if existing is None:
+                self.connection.execute(
+                    "UPDATE backfill_budget_reservations "
+                    "SET publication_identity = ? WHERE id = ?",
+                    (candidate.identity, reservation[0]),
+                )
+            else:
+                merged_releasable_cost = existing[2] + reservation[4]
+                statuses = {existing[5], reservation[7]}
+                if merged_releasable_cost > 0:
+                    merged_status = "reserved"
+                elif "completed" in statuses:
+                    merged_status = "completed"
+                else:
+                    merged_status = "released"
+                self.connection.execute(
+                    "UPDATE backfill_budget_reservations SET "
+                    "cost_upper_bound_usd = ?, releasable_cost_usd = ?, "
+                    "input_tokens = ?, output_tokens = ?, status = ?, "
+                    "updated_at = ? "
+                    "WHERE id = ?",
+                    (
+                        existing[1] + reservation[3],
+                        merged_releasable_cost,
+                        existing[3] + reservation[5],
+                        existing[4] + reservation[6],
+                        merged_status,
+                        max(reservation[9], _utc_now()),
+                        existing[0],
+                    ),
+                )
+                self.connection.execute(
+                    "DELETE FROM backfill_budget_reservations WHERE id = ?",
+                    (reservation[0],),
+                )
         self.connection.execute(
             "UPDATE publication_title_aliases SET publication_identity = ? "
             "WHERE publication_identity = ?",
@@ -463,6 +540,31 @@ class Store:
                 (limit,),
             ).fetchall()
         )
+
+    def backfill_publications_to_enrich(self, limit):
+        return tuple(
+            self.connection.execute(
+                "SELECT p.identity, p.doi, p.url "
+                "FROM publications p "
+                "LEFT JOIN publication_metadata pm "
+                "ON pm.publication_identity = p.identity "
+                "WHERE p.delivery_eligible = 0 AND p.delivered_at IS NULL "
+                "AND (p.doi IS NOT NULL OR p.url IS NOT NULL) "
+                "AND pm.publication_identity IS NULL "
+                "ORDER BY p.first_seen_at, p.identity LIMIT ?",
+                (limit,),
+            ).fetchall()
+        )
+
+    def backfill_enrichment_pending_count(self):
+        return self.connection.execute(
+            "SELECT COUNT(*) FROM publications p "
+            "LEFT JOIN publication_metadata pm "
+            "ON pm.publication_identity = p.identity "
+            "WHERE p.delivery_eligible = 0 AND p.delivered_at IS NULL "
+            "AND (p.doi IS NOT NULL OR p.url IS NOT NULL) "
+            "AND pm.publication_identity IS NULL"
+        ).fetchone()[0]
 
     def load_metadata(self, identity):
         row = self.connection.execute(
@@ -591,10 +693,152 @@ class Store:
                 ),
             )
 
-    def _load_publications(self, require_metadata, pending_only):
+    def backfill_unreserved_ai_usage(self):
+        row = self.connection.execute(
+            "SELECT COALESCE(SUM(a.input_tokens), 0), "
+            "COALESCE(SUM(a.output_tokens), 0) "
+            "FROM publication_ai_assessments a "
+            "JOIN publications p ON p.identity = a.publication_identity "
+            "LEFT JOIN backfill_budget_reservations r "
+            "ON r.publication_identity = a.publication_identity "
+            "AND r.model = a.model AND r.prompt_version = a.prompt_version "
+            "WHERE p.delivery_eligible = 0 AND r.id IS NULL",
+        ).fetchone()
+        return int(row[0]), int(row[1])
+
+    def backfill_budget_usage(self):
+        row = self.connection.execute(
+            "SELECT COALESCE(SUM(cost_upper_bound_usd), 0), "
+            "COALESCE(SUM(input_tokens), 0), "
+            "COALESCE(SUM(output_tokens), 0) "
+            "FROM backfill_budget_reservations"
+        ).fetchone()
+        return float(row[0]), int(row[1]), int(row[2])
+
+    def reserve_backfill_budget(
+        self,
+        publication_identity,
+        model,
+        prompt_version,
+        maximum_cost_usd,
+        total_budget_usd,
+        legacy_cost_usd,
+    ):
+        try:
+            self.connection.execute("BEGIN IMMEDIATE")
+            existing = self.connection.execute(
+                "SELECT id, status FROM backfill_budget_reservations "
+                "WHERE publication_identity = ? AND model = ? "
+                "AND prompt_version = ?",
+                (publication_identity, model, prompt_version),
+            ).fetchone()
+            reserved = float(
+                self.connection.execute(
+                    "SELECT COALESCE(SUM(cost_upper_bound_usd), 0) "
+                    "FROM backfill_budget_reservations"
+                ).fetchone()[0]
+            )
+            if existing is not None:
+                if existing[1] == "released":
+                    if (
+                        reserved + legacy_cost_usd + maximum_cost_usd
+                        > total_budget_usd
+                    ):
+                        self.connection.commit()
+                        return None, "budget"
+                    now = _utc_now()
+                    self.connection.execute(
+                        "UPDATE backfill_budget_reservations SET "
+                        "cost_upper_bound_usd = ?, releasable_cost_usd = ?, "
+                        "input_tokens = 0, output_tokens = 0, "
+                        "status = 'reserved', "
+                        "updated_at = ? WHERE id = ?",
+                        (maximum_cost_usd, maximum_cost_usd, now, existing[0]),
+                    )
+                    self.connection.commit()
+                    return existing[0], "reserved"
+                self.connection.commit()
+                return existing[0], "existing"
+            if reserved + legacy_cost_usd + maximum_cost_usd > total_budget_usd:
+                self.connection.commit()
+                return None, "budget"
+            now = _utc_now()
+            cursor = self.connection.execute(
+                "INSERT INTO backfill_budget_reservations("
+                "publication_identity, model, prompt_version, "
+                "cost_upper_bound_usd, releasable_cost_usd, status, "
+                "created_at, updated_at"
+                ") VALUES (?, ?, ?, ?, ?, 'reserved', ?, ?)",
+                (
+                    publication_identity,
+                    model,
+                    prompt_version,
+                    maximum_cost_usd,
+                    maximum_cost_usd,
+                    now,
+                    now,
+                ),
+            )
+            self.connection.commit()
+            return cursor.lastrowid, "reserved"
+        except Exception:
+            self.connection.rollback()
+            raise
+
+    def release_backfill_budget_reservation(self, reservation_id):
+        try:
+            self.connection.execute("BEGIN IMMEDIATE")
+            reservation = self.connection.execute(
+                "SELECT publication_identity, cost_upper_bound_usd, "
+                "releasable_cost_usd, status "
+                "FROM backfill_budget_reservations WHERE id = ?",
+                (reservation_id,),
+            ).fetchone()
+            if reservation is None or reservation[3] != "reserved":
+                self.connection.commit()
+                return None
+            retained_cost = max(0.0, reservation[1] - reservation[2])
+            status = "completed" if retained_cost > 0 else "released"
+            self.connection.execute(
+                "UPDATE backfill_budget_reservations SET "
+                "cost_upper_bound_usd = ?, releasable_cost_usd = 0, "
+                "status = ?, updated_at = ? WHERE id = ?",
+                (retained_cost, status, _utc_now(), reservation_id),
+            )
+            self.connection.commit()
+            return reservation[0]
+        except Exception:
+            self.connection.rollback()
+            raise
+
+    def complete_backfill_budget_reservation(
+        self,
+        reservation_id,
+        cost_upper_bound_usd,
+        input_tokens,
+        output_tokens,
+    ):
+        with self.connection:
+            self.connection.execute(
+                "UPDATE backfill_budget_reservations SET "
+                "cost_upper_bound_usd = ?, releasable_cost_usd = 0, "
+                "input_tokens = ?, output_tokens = ?, status = 'completed', "
+                "updated_at = ? WHERE id = ?",
+                (
+                    cost_upper_bound_usd,
+                    input_tokens,
+                    output_tokens,
+                    _utc_now(),
+                    reservation_id,
+                ),
+            )
+
+    def _load_publications(self, require_metadata, pending_only, backfill_only=False):
         conditions = []
         if pending_only:
             conditions.append("p.delivery_eligible = 1 AND p.delivered_at IS NULL")
+        if backfill_only:
+            conditions.append("p.delivery_eligible = 0 AND p.delivered_at IS NULL")
         if require_metadata:
             conditions.append(
                 "(p.doi IS NULL OR (pm.publication_identity IS NOT NULL "
@@ -641,6 +885,13 @@ class Store:
 
     def catalog_publications(self):
         return self._load_publications(require_metadata=False, pending_only=False)
+
+    def backfill_publications(self):
+        return self._load_publications(
+            require_metadata=False,
+            pending_only=False,
+            backfill_only=True,
+        )
 
     def pending_count(self):
         return self.connection.execute(

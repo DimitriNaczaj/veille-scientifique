@@ -36,6 +36,115 @@ def format_daily_error(error):
     )
 
 
+def format_backfill_plan(plan):
+    lines = [
+        "RATTRAPAGE – PLAN SANS IA",
+        "=========================",
+        _row("Statut", str(plan.get("status") or "inconnu").upper()),
+        _row("Profil", plan.get("profile") or "non renseigné"),
+        _row("Modèle", plan.get("model") or "non renseigné"),
+        _row(
+            "Tarifs",
+            "{} – vérifiés le {}".format(
+                plan.get("pricing_source") or "source inconnue",
+                plan.get("pricing_checked_at") or "date inconnue",
+            ),
+        ),
+        _row(
+            "Entrée / sortie",
+            "{:.2f} / {:.2f} $US par million de tokens".format(
+                (plan.get("pricing_usd_per_million") or {}).get("input") or 0,
+                (plan.get("pricing_usd_per_million") or {}).get("output") or 0,
+            ),
+        ),
+        "",
+        "SÉLECTION LOCALE",
+        "----------------",
+        _row("Publications disponibles", plan.get("publications_available") or 0),
+        _row("Abstracts disponibles", plan.get("abstracts_available") or 0),
+        _row("Enrichissements en attente", plan.get("enrichment_pending") or 0),
+        _row("Candidates pour l’IA", plan.get("publications_ai_candidates") or 0),
+        _row("Écartées localement", plan.get("publications_locally_excluded") or 0),
+        "",
+        "ESTIMATION",
+        "----------",
+        _row(
+            "Tokens attendus",
+            (plan.get("expected") or {}).get("total_tokens") or 0,
+        ),
+        _row(
+            "Coût attendu",
+            "{:.6f} $US".format((plan.get("expected") or {}).get("cost_usd") or 0),
+        ),
+        _row(
+            "Coût prudent",
+            "{:.6f} $US".format(
+                (plan.get("conservative") or {}).get("cost_usd") or 0
+            ),
+        ),
+        _row(
+            "Plafond calculé",
+            "{:.6f} $US".format((plan.get("maximum") or {}).get("cost_usd") or 0),
+        ),
+        _row("Prêt pour l’IA", "oui" if plan.get("ready_for_ai") else "non"),
+        "",
+        "Aucun appel IA effectué.",
+    ]
+    return "\n".join(str(line) for line in lines)
+
+
+def format_backfill_daily(report):
+    plan = report.get("plan") or {}
+    execution = report.get("execution") or {}
+    status_labels = {
+        "waiting_for_approval": "EN ATTENTE D’APPROBATION",
+        "preparing": "PRÉPARATION",
+        "ok": "OK",
+    }
+    status = str(report.get("status") or "inconnu")
+    lines = [
+        "RATTRAPAGE",
+        "==========",
+        _row("Statut", status_labels.get(status, status.upper())),
+        _row("Appel IA", "oui" if report.get("ai_called") else "non"),
+        "",
+        "PLAN",
+        "----",
+        _row("Publications disponibles", plan.get("publications_available") or 0),
+        _row("Candidates pour l’IA", plan.get("publications_ai_candidates") or 0),
+        _row("Enrichissements en attente", plan.get("enrichment_pending") or 0),
+        _row("Prêt pour l’IA", "oui" if plan.get("ready_for_ai") else "non"),
+        _row(
+            "Coût attendu",
+            "{:.6f} $US".format((plan.get("expected") or {}).get("cost_usd") or 0),
+        ),
+        _row(
+            "Plafond calculé",
+            "{:.6f} $US".format((plan.get("maximum") or {}).get("cost_usd") or 0),
+        ),
+    ]
+    if execution:
+        lines.extend(
+            [
+                "",
+                "LOT",
+                "---",
+                _row("Articles analysés", execution.get("publications_ai_analyzed") or 0),
+                _row("Articles retenus", execution.get("publications_relevant") or 0),
+                _row("Articles restants", execution.get("publications_remaining") or 0),
+                _row(
+                    "Budget restant",
+                    "{:.6f} $US".format(execution.get("budget_remaining_usd") or 0),
+                ),
+                _row("Newsletter envoyée", "oui" if execution.get("email_sent") else "non"),
+            ]
+        )
+    warnings = _unique_messages(plan.get("warnings"), execution.get("warnings"))
+    lines.append("")
+    _message_summary(lines, "Avertissements", warnings, "aucun")
+    return "\n".join(str(line) for line in lines)
+
+
 def format_daily_report(report):
     sync = report.get("sync") or {}
     pipeline = report.get("pipeline") or {}

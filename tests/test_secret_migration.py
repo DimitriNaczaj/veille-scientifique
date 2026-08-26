@@ -287,6 +287,44 @@ source "$1"
                 str(compatible),
             )
 
+    def test_backfill_launcher_invokes_guarded_daily_command(self):
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory(
+            dir=str(_EXECUTABLE_TEMP_ROOT)
+        ) as executable_directory:
+            root = Path(directory)
+            python = Path(executable_directory) / "python"
+            output = root / "python-invocation.txt"
+            python.write_text(
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$0\" \"$@\" > \"$VEILLE_TEST_OUTPUT\"\n",
+                encoding="utf-8",
+            )
+            python.chmod(0o700)
+            launcher = Path(__file__).parents[1] / "scripts" / "run-backfill.sh"
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "VEILLE_ROOT": str(root),
+                    "PYTHON_BIN": str(python),
+                    "VEILLE_TEST_OUTPUT": str(output),
+                }
+            )
+
+            subprocess.run(
+                ["bash", str(launcher)],
+                env=environment,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(
+                output.read_text(encoding="utf-8"),
+                "{}\n-m\nveille\nbackfill-daily\n--config\n{}\n--format\nhuman\n".format(
+                    python, root / "veille-scientifique.ini"
+                ),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
