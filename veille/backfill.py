@@ -131,6 +131,7 @@ def _write_candidate_sample(path, candidates):
                     ),
                 }
             )
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 def _load_plan(path):
@@ -142,6 +143,22 @@ def _load_plan(path):
     if not supplied_id or supplied_id != _plan_id(payload):
         raise ValueError("Le plan de rattrapage a été modifié ou est invalide.")
     payload["plan_id"] = supplied_id
+    sample_output = payload.get("sample_output")
+    sample_sha256 = payload.get("sample_sha256")
+    if sample_output or sample_sha256:
+        try:
+            actual_sample_sha256 = hashlib.sha256(
+                Path(sample_output).read_bytes()
+            ).hexdigest()
+        except (OSError, TypeError):
+            raise ValueError(
+                "L’échantillon CSV associé au plan est absent ou illisible."
+            ) from None
+        if not sample_sha256 or actual_sample_sha256 != sample_sha256:
+            raise ValueError(
+                "L’échantillon CSV ne correspond plus au plan ; "
+                "générez un nouveau plan avant tout appel IA."
+            )
     return payload
 
 
@@ -286,14 +303,18 @@ def build_backfill_plan(
         store.close()
 
     assessor = BehavioralScienceFilter()
-    assessed = tuple(assessor.assess(publication) for publication in publications)
+    comparison_assessed = tuple(
+        assessor.assess(replace(publication, abstract=None))
+        for publication in publications
+    )
     profile_comparison = {
         name: sum(
             publication.relevance_score >= threshold
-            for publication in assessed
+            for publication in comparison_assessed
         )
         for name, threshold in PROFILE_MINIMUM_SCORES.items()
     }
+    assessed = tuple(assessor.assess(publication) for publication in publications)
     minimum_score = PROFILE_MINIMUM_SCORES[profile]
     preliminary_candidates = tuple(
         publication
@@ -331,8 +352,9 @@ def build_backfill_plan(
         for publication in candidates
     )
     sample = _candidate_sample(candidates, sample_size)
+    sample_sha256 = None
     if sample_output:
-        _write_candidate_sample(sample_output, sample)
+        sample_sha256 = _write_candidate_sample(sample_output, sample)
     pricing = MODEL_PRICING[model]
     payload = {
         "service": "backfill-plan",
@@ -364,6 +386,7 @@ def build_backfill_plan(
         "candidate_identities": [publication.identity for publication in candidates],
         "sample_output": str(sample_output) if sample_output else None,
         "sample_size": len(sample),
+        "sample_sha256": sample_sha256,
         "warnings": list(warnings),
     }
     payload["plan_id"] = _plan_id(payload)
@@ -663,6 +686,19 @@ def run_backfill_daily(
         budget_usd = config.getfloat("backfill", "budget_usd", fallback=0.0)
     except ValueError:
         raise ValueError("Une option numérique ou booléenne [backfill] est invalide.") from None
+
+    config_parent = Path(config_path).resolve().parent
+    _validate_distinct_paths(
+        {
+            "configuration": config_path,
+            "base": database,
+            "plan": plan_path,
+            "digest": output,
+            "échantillon": sample_output,
+            "secrets": config_parent / "secrets.env",
+            "anciens secrets": config_parent / "openai.env",
+        }
+    )
 
     plan = build_backfill_plan(
         database,

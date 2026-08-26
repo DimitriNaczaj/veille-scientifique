@@ -1,4 +1,5 @@
 import csv
+import hashlib
 import io
 import json
 import tempfile
@@ -363,6 +364,67 @@ class BackfillPlanCommandTests(unittest.TestCase):
             self.assertEqual(sample[0]["relevance_score"], "7")
             self.assertEqual(plan["sample_output"], str(sample_output))
             self.assertEqual(plan["sample_size"], 1)
+            self.assertEqual(
+                plan["sample_sha256"],
+                hashlib.sha256(sample_output.read_bytes()).hexdigest(),
+            )
+
+    def test_profile_comparison_ignores_cached_abstracts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "veille.sqlite"
+            output = root / "plan.json"
+            store = Store(database)
+            try:
+                store.add_message(
+                    ParsedMessage(
+                        identity="message:cached-abstract",
+                        subject="Ancienne newsletter",
+                        sender="archive@example.org",
+                        publications=(
+                            PublicationCandidate(
+                                identity="doi:10.1234/generic",
+                                doi="10.1234/generic",
+                                title="A generic empirical study",
+                                url="https://doi.org/10.1234/generic",
+                            ),
+                        ),
+                    ),
+                    root / "archive.mbox#1",
+                    delivery_eligible=False,
+                )
+                store.save_metadata(
+                    "doi:10.1234/generic",
+                    WorkMetadata(
+                        title="A generic empirical study",
+                        abstract="A behavioral psychology field experiment.",
+                        journal="Behavioral Science",
+                        published_date="2025",
+                        authors=("A. Martin",),
+                        url="https://doi.org/10.1234/generic",
+                    ),
+                )
+            finally:
+                store.close()
+
+            with redirect_stdout(io.StringIO()):
+                exit_code = main(
+                    [
+                        "backfill-plan",
+                        "--database",
+                        str(database),
+                        "--output",
+                        str(output),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            plan = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(
+                plan["profile_comparison"],
+                {"strict": 0, "standard": 0, "large": 0},
+            )
+            self.assertEqual(plan["publications_ai_candidates"], 1)
 
     def test_can_print_a_readable_french_plan_without_historical_wording(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -394,6 +456,54 @@ class BackfillPlanCommandTests(unittest.TestCase):
             self.assertIn("0.20 / 1.20 $US", report)
             self.assertIn("Aucun appel IA effectué.", report)
             self.assertNotIn("historique", report.casefold())
+
+    def test_run_refuses_a_sample_that_no_longer_matches_the_plan(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "veille.sqlite"
+            plan_path = root / "plan.json"
+            sample_path = root / "sample.csv"
+            config = root / "veille.ini"
+            write_config(config)
+            self._seed_candidate(database, root)
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(
+                    main(
+                        [
+                            "backfill-plan",
+                            "--database",
+                            str(database),
+                            "--output",
+                            str(plan_path),
+                            "--sample-output",
+                            str(sample_path),
+                        ]
+                    ),
+                    0,
+                )
+            sample_path.write_text("échantillon modifié\n", encoding="utf-8")
+            stderr = io.StringIO()
+
+            with patch("sys.stderr", stderr):
+                exit_code = main(
+                    [
+                        "backfill-run",
+                        "--config",
+                        str(config),
+                        "--database",
+                        str(database),
+                        "--plan",
+                        str(plan_path),
+                        "--output",
+                        str(root / "digest.html"),
+                        "--budget-usd",
+                        "1.00",
+                        "--no-send",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 1)
+            self.assertIn("échantillon", json.loads(stderr.getvalue())["error"])
 
     def test_enriches_the_catalog_before_estimating_without_calling_ai(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1101,6 +1211,43 @@ budget_usd = 1.00
             self.assertEqual(calls, [])
             self.assertEqual(report["status"], "waiting_for_approval")
             self.assertFalse(report["ai_called"])
+
+    def test_daily_backfill_refuses_sample_and_digest_path_collision(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "veille.sqlite"
+            config = root / "veille.ini"
+            write_config(config)
+            shared_output = root / "rattrapage.html"
+            with config.open("a", encoding="utf-8") as stream:
+                stream.write(
+                    """
+[app]
+database = {database}
+
+[backfill]
+enabled = false
+plan = {plan}
+output = {output}
+sample = {output}
+profile = standard
+""".format(
+                        database=database,
+                        plan=root / "plan.json",
+                        output=shared_output,
+                    )
+                )
+            self._seed_candidate(database, root)
+            stderr = io.StringIO()
+
+            with patch("sys.stderr", stderr):
+                exit_code = main(
+                    ["backfill-daily", "--config", str(config)]
+                )
+
+            self.assertEqual(exit_code, 1)
+            self.assertIn("distincts", json.loads(stderr.getvalue())["error"])
+            self.assertFalse(shared_output.exists())
 
     def test_daily_backfill_prepares_a_plan_but_never_calls_ai_before_activation(self):
         with tempfile.TemporaryDirectory() as directory:
