@@ -202,7 +202,8 @@ finish() {
 
 TOTAL_STAGES=8
 ENV_FILE="${WIZARD_STATE_FILE:-$HOME/.veille-scientifique-installer.env}"
-REPOSITORY_ARCHIVE="https://api.github.com/repos/DimitriNaczaj/veille-scientifique/tarball/main"
+PUBLIC_REPOSITORY_ARCHIVE="https://github.com/DimitriNaczaj/veille-scientifique/archive/refs/heads/main.tar.gz"
+PRIVATE_REPOSITORY_ARCHIVE="https://api.github.com/repos/DimitriNaczaj/veille-scientifique/tarball/main"
 # Un jeton transmis par le shell parent reste utilisable par ce script, mais ne
 # doit pas être hérité automatiquement par curl, Python ou les tests lancés ensuite.
 export -n GITHUB_TOKEN 2>/dev/null || true
@@ -215,7 +216,7 @@ say "Vérification de Bash, Python 3.8+, SQLite, TLS et des outils d’installat
 [[ -n "${BASH_VERSION:-}" ]] || { warn "Ce script doit être lancé avec Bash."; exit 1; }
 command -v tar >/dev/null 2>&1 || { warn "La commande tar est absente."; exit 1; }
 command -v curl >/dev/null 2>&1 || {
-  warn "curl est requis pour télécharger le dépôt GitHub privé."
+  warn "curl est requis pour télécharger le dépôt GitHub."
   exit 1
 }
 PYTHON_BIN=""
@@ -270,16 +271,6 @@ write_env INSTALL_ROOT "$INSTALL_ROOT"
 chmod 600 "$ENV_FILE"
 
 stage "Téléchargement du projet"
-say "Téléchargement privé de la branche main depuis GitHub."
-if [[ -z "${GITHUB_TOKEN:-}" ]]; then
-  say "Le jeton doit cibler uniquement ce dépôt avec Contents en lecture seule."
-  ask_secret GITHUB_TOKEN "Jeton GitHub temporaire :"
-fi
-[[ -n "$GITHUB_TOKEN" ]] || { warn "Le jeton GitHub est obligatoire."; exit 1; }
-[[ "$GITHUB_TOKEN" != *$'\n'* && "$GITHUB_TOKEN" != *$'\r'* ]] || {
-  warn "Le jeton GitHub contient un retour à la ligne inattendu."
-  exit 1
-}
 DOWNLOAD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/veille-install.XXXXXX")
 cleanup_download() {
   unset GITHUB_TOKEN
@@ -289,18 +280,39 @@ cleanup_download() {
 }
 trap cleanup_download EXIT
 ARCHIVE_PATH="$DOWNLOAD_DIR/veille.tar.gz"
-if ! printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN" | \
-  curl --config - \
+DOWNLOAD_MODE="public"
+say "Tentative de téléchargement public de la branche main."
+if ! curl \
+    --fail \
+    --location \
+    --silent \
+    --show-error \
+    "$PUBLIC_REPOSITORY_ARCHIVE" \
+    --output "$ARCHIVE_PATH"; then
+  DOWNLOAD_MODE="private"
+  say "Le dépôt n’est pas accessible publiquement ; passage au mode privé."
+  if [[ -z "${GITHUB_TOKEN:-}" ]]; then
+    say "Le jeton doit cibler uniquement ce dépôt avec Contents en lecture seule."
+    ask_secret GITHUB_TOKEN "Jeton GitHub temporaire :"
+  fi
+  [[ -n "$GITHUB_TOKEN" ]] || { warn "Le jeton GitHub est obligatoire en mode privé."; exit 1; }
+  [[ "$GITHUB_TOKEN" != *$'\n'* && "$GITHUB_TOKEN" != *$'\r'* ]] || {
+    warn "Le jeton GitHub contient un retour à la ligne inattendu."
+    exit 1
+  }
+  if ! printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN" | \
+    curl --config - \
     --fail \
     --location \
     --silent \
     --show-error \
     --header "Accept: application/vnd.github+json" \
     --header "X-GitHub-Api-Version: 2022-11-28" \
-    "$REPOSITORY_ARCHIVE" \
+    "$PRIVATE_REPOSITORY_ARCHIVE" \
     --output "$ARCHIVE_PATH"; then
-  warn "Téléchargement refusé. Vérifiez le dépôt sélectionné, la permission Contents et l’expiration du jeton."
-  exit 1
+    warn "Téléchargement refusé. Vérifiez le dépôt sélectionné, la permission Contents et l’expiration du jeton."
+    exit 1
+  fi
 fi
 unset GITHUB_TOKEN
 tar -xzf "$ARCHIVE_PATH" -C "$DOWNLOAD_DIR"
@@ -327,7 +339,11 @@ mkdir -p \
   "$INSTALL_ROOT/out" \
   "$INSTALL_ROOT/import" \
   "$INSTALL_ROOT/smoke"
-say "Projet privé installé depuis GitHub ; le jeton a été retiré de la session du wizard."
+if [[ "$DOWNLOAD_MODE" == "public" ]]; then
+  say "Projet public installé depuis GitHub ; aucun jeton n’a été demandé."
+else
+  say "Projet privé installé depuis GitHub ; le jeton a été retiré de la session du wizard."
+fi
 
 stage "Configuration privée"
 CONFIG_PATH="$INSTALL_ROOT/veille-scientifique.ini"

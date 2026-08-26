@@ -272,10 +272,21 @@ exclus de Git.
 
 ### Assistant interactif recommandé
 
-Le dépôt étant privé, créer d’abord un jeton GitHub *fine-grained* limité au dépôt
-`veille-scientifique`, avec la seule permission de dépôt **Contents: Read-only**.
-Depuis une session SSH ouverte sur le NAS, le saisir masqué puis télécharger et
-lancer l’assistant :
+Lorsque le dépôt est public, télécharger et lancer directement l’assistant depuis
+la session SSH du NAS :
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/DimitriNaczaj/veille-scientifique/main/scripts/install-nas.sh \
+  -o /tmp/install-veille-nas.sh
+
+bash /tmp/install-veille-nas.sh
+```
+
+L’assistant essaie toujours le téléchargement public en premier et ne demande donc
+aucun jeton dans ce cas. Si le dépôt redevient privé, créer un jeton GitHub
+*fine-grained* limité au dépôt `veille-scientifique`, avec la seule permission de
+dépôt **Contents: Read-only**, puis utiliser le démarrage authentifié :
 
 ```bash
 umask 077
@@ -303,10 +314,10 @@ mot de passe sans l’afficher, l’isole dans `secrets.env` en mode `600`, exé
 tests, vérifie IMAP/SMTP et lance une recette `--no-ai --no-send` dans une base
 séparée. L’INI ne contient alors que le nom de la variable d’environnement. Il ne
 crée et n’active aucune tâche planifiée. Une relance réutilise le dossier et peut
-conserver la configuration privée existante. Le jeton GitHub n’est écrit dans
-aucun fichier et est supprimé de l’environnement du wizard dès la fin du
-téléchargement. Le même jeton peut servir aux mises à jour suivantes jusqu’à son
-expiration ; il suffit ensuite d’en créer un nouveau avec les mêmes droits.
+conserver la configuration privée existante. En mode privé, le jeton GitHub n’est
+écrit dans aucun fichier et est supprimé de l’environnement du wizard dès la fin
+du téléchargement. Le même jeton peut servir aux mises à jour suivantes jusqu’à
+son expiration ; il suffit ensuite d’en créer un nouveau avec les mêmes droits.
 
 ### Installation manuelle
 
