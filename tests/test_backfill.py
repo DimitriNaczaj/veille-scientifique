@@ -505,6 +505,58 @@ class BackfillPlanCommandTests(unittest.TestCase):
             self.assertEqual(exit_code, 1)
             self.assertIn("échantillon", json.loads(stderr.getvalue())["error"])
 
+    def test_run_refuses_sample_and_digest_path_collision_before_ai(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "veille.sqlite"
+            plan_path = root / "plan.json"
+            shared_output = root / "rattrapage.html"
+            config = root / "veille.ini"
+            write_config(config)
+            self._seed_candidate(database, root)
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(
+                    main(
+                        [
+                            "backfill-plan",
+                            "--database",
+                            str(database),
+                            "--output",
+                            str(plan_path),
+                            "--sample-output",
+                            str(shared_output),
+                        ]
+                    ),
+                    0,
+                )
+            calls = []
+            stderr = io.StringIO()
+
+            with patch.dict(
+                "os.environ", {"OPENAI_API_KEY": "api-secret"}
+            ), patch("sys.stderr", stderr):
+                exit_code = main(
+                    [
+                        "backfill-run",
+                        "--config",
+                        str(config),
+                        "--database",
+                        str(database),
+                        "--plan",
+                        str(plan_path),
+                        "--output",
+                        str(shared_output),
+                        "--budget-usd",
+                        "1.00",
+                        "--no-send",
+                    ],
+                    ai_opener=lambda *args, **kwargs: calls.append(args),
+                )
+
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(calls, [])
+            self.assertIn("distincts", json.loads(stderr.getvalue())["error"])
+
     def test_enriches_the_catalog_before_estimating_without_calling_ai(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

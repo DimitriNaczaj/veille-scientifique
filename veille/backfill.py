@@ -409,21 +409,22 @@ def run_backfill(
     ai_opener=None,
 ):
     config_parent = Path(config_path).resolve().parent
-    _validate_distinct_paths(
-        {
-            "configuration": config_path,
-            "base": database,
-            "plan": plan_path,
-            "digest": output,
-            "secrets": config_parent / "secrets.env",
-            "anciens secrets": config_parent / "openai.env",
-        }
-    )
+    plan = _load_plan(plan_path)
+    paths = {
+        "configuration": config_path,
+        "base": database,
+        "plan": plan_path,
+        "digest": output,
+        "secrets": config_parent / "secrets.env",
+        "anciens secrets": config_parent / "openai.env",
+    }
+    if plan.get("sample_output"):
+        paths["échantillon"] = plan["sample_output"]
+    _validate_distinct_paths(paths)
     if not math.isfinite(budget_usd) or budget_usd <= 0:
         raise ValueError("Le budget de rattrapage doit être strictement positif.")
     if article_limit < 1 or article_limit > 100:
         raise ValueError("La limite d’articles doit être comprise entre 1 et 100.")
-    plan = _load_plan(plan_path)
     model = plan.get("model")
     profile = plan.get("profile")
     if model not in MODEL_PRICING or profile not in PROFILE_MINIMUM_SCORES:
