@@ -50,6 +50,7 @@ Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque front
 36. En tant que consultant Bellegarde, je veux recevoir les résultats par digests de rattrapage limités et dédupliqués avec la veille quotidienne, afin de dépouiller le corpus progressivement.
 37. En tant qu’exploitant du NAS, je veux enrichir uniquement les publications candidates du profil choisi, afin de ne pas solliciter inutilement Crossref et les éditeurs.
 38. En tant que consultant Bellegarde, je veux comparer les profils et contrôler un échantillon CSV de leurs candidats sans IA, afin d’ajuster le niveau de bruit avant toute dépense.
+39. En tant que consultant Bellegarde, je veux écarter localement les corrections, sommaires et emplois manifestement non humains des termes comportementaux, afin de ne pas enrichir ni analyser des faux positifs structurels.
 
 ## Implementation Decisions
 
@@ -72,6 +73,7 @@ Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque front
 - Trois erreurs d’enrichissement consécutives ouvrent un coupe-circuit pour l’exécution courante.
 - Une exécution sans accès Crossref conserve les DOI non enrichis dans la file d’attente ; elle ne les marque pas comme livrés.
 - Le préfiltre attribue des points à des concepts comportementaux explicites dans le titre et l’abstract. Un score d’au moins 5 donne la priorité élevée, de 2 à 4 place l’article « À surveiller », et un score inférieur à 2 l’écarte du digest.
+- Avant d’appliquer les seuils, le préfiltre annule prudemment le score des corrections éditoriales, sommaires de revue et usages uniquement matériels, machiniques, biomédicaux ou moléculaires de `behavior`, `intervention` ou `choice`. Chaque exclusion ajoute une raison explicite et les contextes humains ou comportementaux restent candidats.
 - Le digest d’une exécution contient uniquement les publications jamais vues auparavant.
 - Une publication reste en attente tant qu’un digest complet n’a pas été écrit ; une relance reprend ces publications après une interruption.
 - Le digest est remplacé atomiquement afin de ne jamais exposer un fichier partiellement écrit.

@@ -20,9 +20,54 @@ BEHAVIORAL_CONCEPTS = (
     ("bien-être", 1, r"\bwell[ -]being\b|\bsubjective well-being\b|\bbien-être\b"),
 )
 
+STRUCTURAL_EXCLUSIONS = (
+    (
+        "correction éditoriale",
+        r"^\s*(?:author|publisher)?\s*(?:correction|corrigendum|erratum)"
+        r"(?:\s*:|\s+to\b)",
+    ),
+    (
+        "sommaire de revue",
+        r"(?:\bvolume\s+\d+\b.*\bissue\s+\d+\b|^\s*table of contents\b)",
+    ),
+)
+
+SINGLE_CONCEPT_EXCLUSIONS = (
+    (
+        "comportement non humain",
+        "comportement",
+        r"\b(?:mechanical|flexural|mortar|polymer|concrete|alloy|composite|"
+        r"rheological|thermal)\b",
+    ),
+    (
+        "comportement non humain",
+        "comportement",
+        r"\b(?:llm|machine|model|algorithm|robot(?:ic)?)\s+behaviou?r\b",
+    ),
+    (
+        "travail biomédical",
+        "comportement",
+        r"\b(?:sirna|gene|protein|cellular|molecular|liver-targeted)\b",
+    ),
+    (
+        "décision non humaine",
+        "choix et décision",
+        r"\b(?:dna|rna|protein|gene|cell(?:ular)?|molecular|pathway|enzyme)\b",
+    ),
+)
+
+HUMAN_BEHAVIORAL_CONTEXT = (
+    r"\b(?:human|people|person|individual|participant|patient|women|men|adult|"
+    r"adolescent|child|employee|consumer|citizen|student|farmer|caregiver|"
+    r"community|household|user|social|psycholog|personality|mental|health|"
+    r"education|behaviou?r|habit|attitude|motivation|trust|choice|decision|"
+    r"willingness|engagement|communication|experiment|trial)\w*\b"
+)
+
 
 class BehavioralScienceFilter:
     def assess(self, publication):
+        title = (publication.title or "").casefold()
         text = " ".join(
             part for part in (publication.title, publication.abstract) if part
         ).casefold()
@@ -32,6 +77,29 @@ class BehavioralScienceFilter:
             if re.search(pattern, text, flags=re.IGNORECASE):
                 score += weight
                 reasons.append(label)
+
+        for label, pattern in STRUCTURAL_EXCLUSIONS:
+            if re.search(pattern, title, flags=re.IGNORECASE):
+                score = 0
+                reasons.append(label)
+                break
+
+        if score:
+            for label, concept, pattern in SINGLE_CONCEPT_EXCLUSIONS:
+                if reasons == [concept] and re.search(
+                    pattern, title, flags=re.IGNORECASE
+                ):
+                    score = 0
+                    reasons.append(label)
+                    break
+
+        if (
+            score
+            and reasons == ["intervention"]
+            and not re.search(HUMAN_BEHAVIORAL_CONTEXT, title, flags=re.IGNORECASE)
+        ):
+            score = 0
+            reasons.append("intervention non comportementale")
 
         if score >= 5:
             priority = PublicationPriority.HIGH

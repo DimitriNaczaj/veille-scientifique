@@ -84,7 +84,7 @@ class CrossrefClient:
         url = self.BASE_URL + quote(doi, safe="")
         if self.contact_email:
             url += "?" + urlencode({"mailto": self.contact_email})
-        agent = "veille-scientifique/0.2 (+https://github.com/DimitriNaczaj/veille-scientifique)"
+        agent = "veille-scientifique/0.6.2 (+https://github.com/DimitriNaczaj/veille-scientifique)"
         if self.contact_email:
             agent += " mailto:{}".format(self.contact_email)
         request = Request(url, headers={"Accept": "application/json", "User-Agent": agent})

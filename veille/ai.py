@@ -104,7 +104,7 @@ class OpenAIAnalyzer:
                 "Authorization": "Bearer " + self.api_key,
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "User-Agent": "veille-scientifique/0.6.1",
+                "User-Agent": "veille-scientifique/0.6.2",
             },
             method="POST",
         )

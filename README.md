@@ -11,7 +11,8 @@ Application de veille scientifique autonome et légère pour Synology DS218.
 - découverte des articles sans DOI depuis les titres et liens de suivi des éditeurs pris en charge ;
 - enrichissement par Crossref puis par métadonnées HTML/JSON-LD des pages éditeurs ;
 - cache Crossref persistant et reprise après panne ;
-- préfiltrage explicable en sciences comportementales ;
+- préfiltrage explicable en sciences comportementales, avec exclusions prudentes
+  des corrections, sommaires et usages manifestement non humains des mots-clés ;
 - classement en « Priorité élevée » et « À surveiller » ;
 - second tri et résumés français structurés via l’API OpenAI, lorsque configurée ;
 - déduplication persistante avec SQLite ;

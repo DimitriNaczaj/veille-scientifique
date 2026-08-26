@@ -94,3 +94,17 @@ Python 3.8+ et n’utilise que la bibliothèque standard.
 La couche OpenAI n’a pas été appelée avec un compte réel, faute de clé API fournie.
 La validation garantit le contrat HTTP et le schéma de réponse, mais la qualité du
 classement doit encore être évaluée sur un échantillon annoté avant activation.
+
+## Préfiltrage du rattrapage
+
+Audit statique effectué le 26 août 2026 sur un échantillon réparti de 100 candidats
+du profil standard, sans enrichissement ni appel IA. Dix faux positifs structurels
+ont pu être écartés avec des règles prudentes : corrections et corrigenda, sommaires
+de revue, comportement de matériaux ou de machines, travail biomédical moléculaire,
+interventions sans contexte humain et choix de voies biologiques.
+
+Appliquées en lecture seule aux 35 453 références encore disponibles, ces règles
+font passer le profil standard de 2 192 à 2 054 candidats, le profil strict de 210 à
+202 et le profil large de 2 614 à 2 472. Les tests de conservation couvrent les
+interventions comportementales, la décision humaine et les articles pertinents à
+faible score. Cette mesure ne remplace pas l’examen des abstracts ni la décision IA.

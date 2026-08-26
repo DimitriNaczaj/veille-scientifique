@@ -1,6 +1,6 @@
 [project]
 name = "bellegarde-veille"
-version = "0.6.1"
+version = "0.6.2"
 description = "Veille scientifique légère pour Synology DS218"
 requires-python = ">=3.8"
 

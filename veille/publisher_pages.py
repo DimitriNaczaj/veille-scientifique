@@ -118,7 +118,7 @@ class PublisherPageClient:
             headers={
                 "Accept": "text/html,application/xhtml+xml",
                 "User-Agent": (
-                    "veille-scientifique/0.6.1 "
+                    "veille-scientifique/0.6.2 "
                     "(+https://github.com/DimitriNaczaj/veille-scientifique)"
                 ),
             },

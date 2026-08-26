@@ -3,6 +3,10 @@
 - [ ] Ajouter à chaque article un bouton « Ajouter à Zotero ».
 - [ ] Ajouter, pour chaque auteur, un lien vers sa recherche Google Scholar.
 
+## Livré en version 0.6.2
+
+- [x] Réduire les faux positifs structurels du préfiltre sans durcir le profil standard.
+
 ## Livré en version 0.6
 
 - [x] Préparer un rattrapage sans appel IA et en estimer les tokens et le coût.

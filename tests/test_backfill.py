@@ -278,6 +278,15 @@ class BackfillPlanCommandTests(unittest.TestCase):
                             title="Mineral composition of ancient rocks",
                             url="https://doi.org/10.1234/rocks",
                         ),
+                        PublicationCandidate(
+                            identity="doi:10.1234/correction",
+                            doi="10.1234/correction",
+                            title=(
+                                "Author Correction: A meta-analysis of "
+                                "science-relevant misinformation"
+                            ),
+                            url="https://doi.org/10.1234/correction",
+                        ),
                     ),
                 )
                 store.add_message(
@@ -330,9 +339,9 @@ class BackfillPlanCommandTests(unittest.TestCase):
             self.assertEqual(plan["status"], "ok")
             self.assertFalse(plan["ai_called"])
             self.assertTrue(plan["approval_required"])
-            self.assertEqual(plan["publications_available"], 2)
+            self.assertEqual(plan["publications_available"], 3)
             self.assertEqual(plan["publications_ai_candidates"], 1)
-            self.assertEqual(plan["publications_locally_excluded"], 1)
+            self.assertEqual(plan["publications_locally_excluded"], 2)
             self.assertEqual(
                 plan["profile_comparison"],
                 {"strict": 1, "standard": 1, "large": 1},
