@@ -159,6 +159,8 @@ def build_parser():
     backfill_plan.add_argument("--output", required=True, help="Plan JSON à écrire")
     backfill_plan.add_argument("--config", help="Configuration pour enrichir sans IA")
     backfill_plan.add_argument("--enrichment-limit", type=int, default=0)
+    backfill_plan.add_argument("--sample-output", help="Échantillon CSV des candidats")
+    backfill_plan.add_argument("--sample-size", type=int, default=50)
     backfill_plan.add_argument("--model", default="gpt-5.6-luna")
     backfill_plan.add_argument(
         "--profile",
@@ -275,6 +277,8 @@ def main(
                 config_path=args.config,
                 enrichment_limit=args.enrichment_limit,
                 http_opener=http_opener,
+                sample_output=args.sample_output,
+                sample_size=args.sample_size,
             )
         elif args.command == "backfill-run":
             report = run_backfill(

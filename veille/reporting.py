@@ -2,6 +2,10 @@ def _row(label, value):
     return "{:<24}{}".format(label, value)
 
 
+def _backfill_row(label, value):
+    return "{:<28}{}".format(label, value)
+
+
 def _unique_messages(*groups):
     messages = []
     for group in groups:
@@ -37,20 +41,22 @@ def format_daily_error(error):
 
 
 def format_backfill_plan(plan):
+    row = _backfill_row
+    comparison = plan.get("profile_comparison") or {}
     lines = [
         "RATTRAPAGE – PLAN SANS IA",
         "=========================",
-        _row("Statut", str(plan.get("status") or "inconnu").upper()),
-        _row("Profil", plan.get("profile") or "non renseigné"),
-        _row("Modèle", plan.get("model") or "non renseigné"),
-        _row(
+        row("Statut", str(plan.get("status") or "inconnu").upper()),
+        row("Profil", plan.get("profile") or "non renseigné"),
+        row("Modèle", plan.get("model") or "non renseigné"),
+        row(
             "Tarifs",
             "{} – vérifiés le {}".format(
                 plan.get("pricing_source") or "source inconnue",
                 plan.get("pricing_checked_at") or "date inconnue",
             ),
         ),
-        _row(
+        row(
             "Entrée / sortie",
             "{:.2f} / {:.2f} $US par million de tokens".format(
                 (plan.get("pricing_usd_per_million") or {}).get("input") or 0,
@@ -60,33 +66,41 @@ def format_backfill_plan(plan):
         "",
         "SÉLECTION LOCALE",
         "----------------",
-        _row("Publications disponibles", plan.get("publications_available") or 0),
-        _row("Abstracts disponibles", plan.get("abstracts_available") or 0),
-        _row("Enrichissements en attente", plan.get("enrichment_pending") or 0),
-        _row("Candidates pour l’IA", plan.get("publications_ai_candidates") or 0),
-        _row("Écartées localement", plan.get("publications_locally_excluded") or 0),
+        row("Publications disponibles", plan.get("publications_available") or 0),
+        row("Abstracts disponibles", plan.get("abstracts_available") or 0),
+        row("Enrichissements en attente", plan.get("enrichment_pending") or 0),
+        row("Candidates pour l’IA", plan.get("publications_ai_candidates") or 0),
+        row("Écartées localement", plan.get("publications_locally_excluded") or 0),
+        row("Échantillon CSV", plan.get("sample_output") or "non généré"),
+        row("Titres échantillonnés", plan.get("sample_size") or 0),
+        "",
+        "COMPARAISON AVANT ABSTRACTS",
+        "----------------------------",
+        row("Profil strict", comparison.get("strict") or 0),
+        row("Profil standard", comparison.get("standard") or 0),
+        row("Profil large", comparison.get("large") or 0),
         "",
         "ESTIMATION",
         "----------",
-        _row(
+        row(
             "Tokens attendus",
             (plan.get("expected") or {}).get("total_tokens") or 0,
         ),
-        _row(
+        row(
             "Coût attendu",
             "{:.6f} $US".format((plan.get("expected") or {}).get("cost_usd") or 0),
         ),
-        _row(
+        row(
             "Coût prudent",
             "{:.6f} $US".format(
                 (plan.get("conservative") or {}).get("cost_usd") or 0
             ),
         ),
-        _row(
+        row(
             "Plafond calculé",
             "{:.6f} $US".format((plan.get("maximum") or {}).get("cost_usd") or 0),
         ),
-        _row("Prêt pour l’IA", "oui" if plan.get("ready_for_ai") else "non"),
+        row("Prêt pour l’IA", "oui" if plan.get("ready_for_ai") else "non"),
         "",
         "Aucun appel IA effectué.",
     ]
@@ -94,6 +108,7 @@ def format_backfill_plan(plan):
 
 
 def format_backfill_daily(report):
+    row = _backfill_row
     plan = report.get("plan") or {}
     execution = report.get("execution") or {}
     status_labels = {
@@ -105,20 +120,21 @@ def format_backfill_daily(report):
     lines = [
         "RATTRAPAGE",
         "==========",
-        _row("Statut", status_labels.get(status, status.upper())),
-        _row("Appel IA", "oui" if report.get("ai_called") else "non"),
+        row("Statut", status_labels.get(status, status.upper())),
+        row("Appel IA", "oui" if report.get("ai_called") else "non"),
         "",
         "PLAN",
         "----",
-        _row("Publications disponibles", plan.get("publications_available") or 0),
-        _row("Candidates pour l’IA", plan.get("publications_ai_candidates") or 0),
-        _row("Enrichissements en attente", plan.get("enrichment_pending") or 0),
-        _row("Prêt pour l’IA", "oui" if plan.get("ready_for_ai") else "non"),
-        _row(
+        row("Publications disponibles", plan.get("publications_available") or 0),
+        row("Candidates pour l’IA", plan.get("publications_ai_candidates") or 0),
+        row("Enrichissements en attente", plan.get("enrichment_pending") or 0),
+        row("Prêt pour l’IA", "oui" if plan.get("ready_for_ai") else "non"),
+        row("Échantillon CSV", plan.get("sample_output") or "non généré"),
+        row(
             "Coût attendu",
             "{:.6f} $US".format((plan.get("expected") or {}).get("cost_usd") or 0),
         ),
-        _row(
+        row(
             "Plafond calculé",
             "{:.6f} $US".format((plan.get("maximum") or {}).get("cost_usd") or 0),
         ),
@@ -129,14 +145,14 @@ def format_backfill_daily(report):
                 "",
                 "LOT",
                 "---",
-                _row("Articles analysés", execution.get("publications_ai_analyzed") or 0),
-                _row("Articles retenus", execution.get("publications_relevant") or 0),
-                _row("Articles restants", execution.get("publications_remaining") or 0),
-                _row(
+                row("Articles analysés", execution.get("publications_ai_analyzed") or 0),
+                row("Articles retenus", execution.get("publications_relevant") or 0),
+                row("Articles restants", execution.get("publications_remaining") or 0),
+                row(
                     "Budget restant",
                     "{:.6f} $US".format(execution.get("budget_remaining_usd") or 0),
                 ),
-                _row("Newsletter envoyée", "oui" if execution.get("email_sent") else "non"),
+                row("Newsletter envoyée", "oui" if execution.get("email_sent") else "non"),
             ]
         )
     warnings = _unique_messages(plan.get("warnings"), execution.get("warnings"))

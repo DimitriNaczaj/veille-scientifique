@@ -45,6 +45,9 @@ CREATE TABLE IF NOT EXISTS message_publications (
     PRIMARY KEY (message_identity, publication_identity)
 );
 
+CREATE INDEX IF NOT EXISTS idx_message_publications_publication_identity
+ON message_publications(publication_identity);
+
 CREATE TABLE IF NOT EXISTS publication_metadata (
     publication_identity TEXT PRIMARY KEY REFERENCES publications(identity),
     status TEXT NOT NULL,
@@ -565,6 +568,16 @@ class Store:
             "AND (p.doi IS NOT NULL OR p.url IS NOT NULL) "
             "AND pm.publication_identity IS NULL"
         ).fetchone()[0]
+
+    def backfill_metadata_identities(self):
+        return {
+            row[0]
+            for row in self.connection.execute(
+                "SELECT pm.publication_identity FROM publication_metadata pm "
+                "JOIN publications p ON p.identity = pm.publication_identity "
+                "WHERE p.delivery_eligible = 0 AND p.delivered_at IS NULL"
+            ).fetchall()
+        }
 
     def load_metadata(self, identity):
         row = self.connection.execute(

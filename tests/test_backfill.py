@@ -1,3 +1,4 @@
+import csv
 import io
 import json
 import tempfile
@@ -69,6 +70,8 @@ class BackfillPlanCommandTests(unittest.TestCase):
                     "expected": {"cost_usd": 0.012345},
                     "maximum": {"cost_usd": 0.045678},
                     "ready_for_ai": False,
+                    "sample_output": "/tmp/rattrapage-sample.csv",
+                    "sample_size": 50,
                 },
             }
         )
@@ -77,7 +80,9 @@ class BackfillPlanCommandTests(unittest.TestCase):
         self.assertIn("EN ATTENTE D’APPROBATION", output)
         self.assertIn("Appel IA", output)
         self.assertIn("non", output)
-        self.assertIn("42", output)
+        self.assertIn("Publications disponibles    42", output)
+        self.assertIn("Échantillon CSV", output)
+        self.assertIn("/tmp/rattrapage-sample.csv", output)
 
     def test_plan_refuses_paths_that_can_overwrite_the_database(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -252,6 +257,7 @@ class BackfillPlanCommandTests(unittest.TestCase):
             root = Path(directory)
             database = root / "veille.sqlite"
             output = root / "rattrapage-plan.json"
+            sample_output = root / "rattrapage-sample.csv"
             store = Store(database)
             try:
                 message = ParsedMessage(
@@ -308,6 +314,10 @@ class BackfillPlanCommandTests(unittest.TestCase):
                         "gpt-5.6-luna",
                         "--profile",
                         "standard",
+                        "--sample-output",
+                        str(sample_output),
+                        "--sample-size",
+                        "50",
                     ]
                 )
 
@@ -322,6 +332,10 @@ class BackfillPlanCommandTests(unittest.TestCase):
             self.assertEqual(plan["publications_available"], 2)
             self.assertEqual(plan["publications_ai_candidates"], 1)
             self.assertEqual(plan["publications_locally_excluded"], 1)
+            self.assertEqual(
+                plan["profile_comparison"],
+                {"strict": 1, "standard": 1, "large": 1},
+            )
             self.assertEqual(plan["abstracts_available"], 1)
             self.assertEqual(plan["model"], "gpt-5.6-luna")
             self.assertEqual(plan["pricing_usd_per_million"]["input"], 0.20)
@@ -339,9 +353,16 @@ class BackfillPlanCommandTests(unittest.TestCase):
                 plan["maximum"]["cost_usd"],
                 plan["conservative"]["cost_usd"],
             )
-            self.assertEqual(plan["enrichment_pending"], 1)
-            self.assertFalse(plan["ready_for_ai"])
+            self.assertEqual(plan["enrichment_pending"], 0)
+            self.assertTrue(plan["ready_for_ai"])
             self.assertTrue(plan["plan_id"])
+            with sample_output.open(encoding="utf-8", newline="") as stream:
+                sample = list(csv.DictReader(stream))
+            self.assertEqual(len(sample), 1)
+            self.assertEqual(sample[0]["title"], "Social norms and household behavior")
+            self.assertEqual(sample[0]["relevance_score"], "7")
+            self.assertEqual(plan["sample_output"], str(sample_output))
+            self.assertEqual(plan["sample_size"], 1)
 
     def test_can_print_a_readable_french_plan_without_historical_wording(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -395,6 +416,12 @@ class BackfillPlanCommandTests(unittest.TestCase):
                                 title="Social norms and household behavior",
                                 url="https://doi.org/10.1234/norms",
                             ),
+                            PublicationCandidate(
+                                identity="doi:10.1234/minerals",
+                                doi="10.1234/minerals",
+                                title="Mineral composition of ancient rocks",
+                                url="https://doi.org/10.1234/minerals",
+                            ),
                         ),
                     ),
                     root / "archive.mbox#1",
@@ -446,6 +473,9 @@ class BackfillPlanCommandTests(unittest.TestCase):
             self.assertEqual(plan["publications_enriched"], 1)
             self.assertEqual(plan["enrichment_pending"], 0)
             self.assertTrue(plan["ready_for_ai"])
+            self.assertEqual(plan["publications_available"], 2)
+            self.assertEqual(plan["publications_ai_candidates"], 1)
+            self.assertEqual(plan["publications_locally_excluded"], 1)
             self.assertEqual(len(requests), 1)
 
     def test_enrichment_stops_after_three_consecutive_service_failures(self):
@@ -1040,6 +1070,8 @@ database = {database}
 enabled = true
 plan = {plan}
 output = {output}
+sample = {sample}
+sample_size = 25
 profile = standard
 enrichment_limit = 0
 article_limit = 15
@@ -1048,6 +1080,7 @@ budget_usd = 1.00
                     database=database,
                     plan=root / "plan.json",
                     output=root / "rattrapage.html",
+                    sample=root / "rattrapage-sample.csv",
                 ),
                 encoding="utf-8",
             )
@@ -1085,6 +1118,8 @@ database = {database}
 enabled = false
 plan = {plan}
 output = {output}
+sample = {sample}
+sample_size = 25
 profile = standard
 enrichment_limit = 100
 article_limit = 15
@@ -1093,6 +1128,7 @@ budget_usd = 1.00
                         database=database,
                         plan=root / "plan.json",
                         output=root / "rattrapage.html",
+                        sample=root / "rattrapage-sample.csv",
                     )
                 )
             self._seed_candidate(database, root)
@@ -1114,6 +1150,8 @@ budget_usd = 1.00
             self.assertEqual(report["status"], "waiting_for_approval")
             self.assertFalse(report["ai_called"])
             self.assertTrue((root / "plan.json").is_file())
+            self.assertTrue((root / "rattrapage-sample.csv").is_file())
+            self.assertEqual(report["plan"]["sample_size"], 1)
 
     @staticmethod
     def _seed_candidate(database, root):

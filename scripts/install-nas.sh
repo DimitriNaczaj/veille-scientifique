@@ -391,7 +391,8 @@ if [[ "$REUSE_CONFIG" == false ]]; then
     printf '%s\n' '[backfill]' 'enabled = false'
     printf 'plan = %s/out/rattrapage-plan.json\noutput = %s/out/rattrapage.html\n' \
       "$INSTALL_ROOT" "$INSTALL_ROOT"
-    printf '%s\n' 'profile = standard' 'enrichment_limit = 100' \
+    printf 'sample = %s/out/rattrapage-sample.csv\n' "$INSTALL_ROOT"
+    printf '%s\n' 'sample_size = 100' 'profile = standard' 'enrichment_limit = 100' \
       'article_limit = 15' 'budget_usd = 0'
   } > "$CONFIG_TMP"
   chmod 600 "$CONFIG_TMP"
@@ -412,7 +413,8 @@ if ! grep -q '^\[backfill\]$' "$CONFIG_PATH"; then
     printf '\n%s\n' '[backfill]' 'enabled = false'
     printf 'plan = %s/out/rattrapage-plan.json\noutput = %s/out/rattrapage.html\n' \
       "$INSTALL_ROOT" "$INSTALL_ROOT"
-    printf '%s\n' 'profile = standard' 'enrichment_limit = 100' \
+    printf 'sample = %s/out/rattrapage-sample.csv\n' "$INSTALL_ROOT"
+    printf '%s\n' 'sample_size = 100' 'profile = standard' 'enrichment_limit = 100' \
       'article_limit = 15' 'budget_usd = 0'
   } >> "$CONFIG_PATH"
   say "Section [backfill] ajoutée, désactivée et sans budget IA."

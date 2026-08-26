@@ -1,3 +1,4 @@
+import csv
 import hashlib
 import json
 import math
@@ -30,6 +31,14 @@ MODEL_PRICING = {
     }
 }
 PROFILE_MINIMUM_SCORES = {"strict": 5, "standard": 2, "large": 1}
+SAMPLE_FIELDS = (
+    "identity",
+    "doi",
+    "title",
+    "source_sender",
+    "relevance_score",
+    "relevance_reasons",
+)
 
 
 def _estimated_document(publication):
@@ -91,6 +100,39 @@ def _plan_id(payload):
     return hashlib.sha256(canonical).hexdigest()
 
 
+def _candidate_sample(candidates, size):
+    if size < 1 or size > 1000:
+        raise ValueError(
+            "La taille de l’échantillon doit être comprise entre 1 et 1 000."
+        )
+    count = min(size, len(candidates))
+    if count == 0:
+        return ()
+    return tuple(
+        candidates[(index * len(candidates)) // count]
+        for index in range(count)
+    )
+
+
+def _write_candidate_sample(path, candidates):
+    with atomic_open(path, "w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=SAMPLE_FIELDS)
+        writer.writeheader()
+        for publication in candidates:
+            writer.writerow(
+                {
+                    "identity": publication.identity,
+                    "doi": publication.doi or "",
+                    "title": publication.title or "",
+                    "source_sender": publication.source_sender,
+                    "relevance_score": publication.relevance_score,
+                    "relevance_reasons": " | ".join(
+                        publication.relevance_reasons
+                    ),
+                }
+            )
+
+
 def _load_plan(path):
     try:
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -141,11 +183,24 @@ def _analyzed_publication(publication, analysis):
     )
 
 
-def _enrich_backfill(database, config_path, limit, http_opener):
+def _with_metadata(publication, metadata):
+    return replace(
+        publication,
+        title=metadata.title or publication.title,
+        abstract=metadata.abstract,
+        journal=metadata.journal,
+        published_date=metadata.published_date,
+        authors=metadata.authors,
+        url=metadata.url or publication.url,
+        metadata_status="success",
+    )
+
+
+def _enrich_backfill(database, config_path, limit, http_opener, candidates):
     if limit < 0 or limit > 1000:
         raise ValueError("La limite d’enrichissement doit être comprise entre 0 et 1 000.")
     if not config_path or limit == 0:
-        return 0, ()
+        return 0, (), {}
     config = _load_config(config_path)
     contact_email = config.get("app", "crossref_email", fallback="").strip()
     if not contact_email:
@@ -157,20 +212,30 @@ def _enrich_backfill(database, config_path, limit, http_opener):
     store = Store(database)
     enriched = 0
     warnings = []
+    metadata_updates = {}
     consecutive_failures = 0
+    attempted = 0
     try:
-        for identity, doi, url in store.backfill_publications_to_enrich(limit):
-            reference = doi or url
+        for publication in candidates:
+            if attempted >= limit:
+                break
+            if not (publication.doi or publication.url):
+                continue
+            if store.metadata_status(publication.identity) is not None:
+                continue
+            attempted += 1
+            reference = publication.doi or publication.url
             try:
                 metadata = (
-                    provider.fetch_by_doi(doi)
-                    if doi is not None
-                    else provider.fetch_by_url(url)
+                    provider.fetch_by_doi(publication.doi)
+                    if publication.doi is not None
+                    else provider.fetch_by_url(publication.url)
                 )
                 if metadata is None:
-                    store.save_metadata_not_found(identity)
+                    store.save_metadata_not_found(publication.identity)
                 else:
-                    store.save_metadata(identity, metadata)
+                    store.save_metadata(publication.identity, metadata)
+                    metadata_updates[publication.identity] = metadata
                     enriched += 1
                 consecutive_failures = 0
             except Exception as error:
@@ -184,7 +249,7 @@ def _enrich_backfill(database, config_path, limit, http_opener):
                     break
     finally:
         store.close()
-    return enriched, tuple(warnings)
+    return enriched, tuple(warnings), metadata_updates
 
 
 def build_backfill_plan(
@@ -195,6 +260,8 @@ def build_backfill_plan(
     config_path=None,
     enrichment_limit=0,
     http_opener=None,
+    sample_output=None,
+    sample_size=50,
 ):
     paths = {"base": database, "plan": output}
     installation_root = Path(database).resolve().parent.parent
@@ -202,6 +269,8 @@ def build_backfill_plan(
     paths["anciens secrets"] = installation_root / "openai.env"
     if config_path:
         paths["configuration"] = config_path
+    if sample_output:
+        paths["échantillon"] = sample_output
     _validate_distinct_paths(paths)
     if profile not in PROFILE_MINIMUM_SCORES:
         raise ValueError("Profil de rattrapage invalide.")
@@ -210,27 +279,60 @@ def build_backfill_plan(
             "Tarif inconnu pour le modèle {} ; mettez à jour la table de prix "
             "avant tout appel IA.".format(model)
         )
-    publications_enriched, warnings = _enrich_backfill(
-        database,
-        config_path,
-        enrichment_limit,
-        http_opener,
-    )
     store = Store(database)
     try:
         publications = store.backfill_publications()
-        enrichment_pending = store.backfill_enrichment_pending_count()
     finally:
         store.close()
 
     assessor = BehavioralScienceFilter()
     assessed = tuple(assessor.assess(publication) for publication in publications)
+    profile_comparison = {
+        name: sum(
+            publication.relevance_score >= threshold
+            for publication in assessed
+        )
+        for name, threshold in PROFILE_MINIMUM_SCORES.items()
+    }
     minimum_score = PROFILE_MINIMUM_SCORES[profile]
-    candidates = tuple(
+    preliminary_candidates = tuple(
         publication
         for publication in assessed
         if publication.relevance_score >= minimum_score
     )
+    publications_enriched, warnings, metadata_updates = _enrich_backfill(
+        database,
+        config_path,
+        enrichment_limit,
+        http_opener,
+        preliminary_candidates,
+    )
+    candidates = tuple(
+        assessor.assess(
+            _with_metadata(publication, metadata_updates[publication.identity])
+            if publication.identity in metadata_updates
+            else publication
+        )
+        for publication in preliminary_candidates
+    )
+    candidates = tuple(
+        publication
+        for publication in candidates
+        if publication.relevance_score >= minimum_score
+    )
+    store = Store(database)
+    try:
+        metadata_identities = store.backfill_metadata_identities()
+    finally:
+        store.close()
+    enrichment_pending = sum(
+        publication.identity not in metadata_identities
+        and bool(publication.doi or publication.url)
+        for publication in candidates
+    )
+    sample = _candidate_sample(candidates, sample_size)
+    if sample_output:
+        _write_candidate_sample(sample_output, sample)
     pricing = MODEL_PRICING[model]
     payload = {
         "service": "backfill-plan",
@@ -244,10 +346,11 @@ def build_backfill_plan(
         "publications_available": len(publications),
         "publications_ai_candidates": len(candidates),
         "publications_locally_excluded": len(publications) - len(candidates),
+        "profile_comparison": profile_comparison,
         "publications_enriched": publications_enriched,
         "enrichment_pending": enrichment_pending,
         "ready_for_ai": enrichment_pending == 0,
-        "abstracts_available": sum(bool(publication.abstract) for publication in publications),
+        "abstracts_available": sum(bool(publication.abstract) for publication in candidates),
         "pricing_usd_per_million": {
             "input": pricing["input"],
             "input_upper_bound": pricing["input_upper_bound"],
@@ -259,6 +362,8 @@ def build_backfill_plan(
         "conservative": _usage(candidates, pricing, conservative=True),
         "maximum": _maximum_usage(candidates, pricing),
         "candidate_identities": [publication.identity for publication in candidates],
+        "sample_output": str(sample_output) if sample_output else None,
+        "sample_size": len(sample),
         "warnings": list(warnings),
     }
     payload["plan_id"] = _plan_id(payload)
@@ -537,6 +642,14 @@ def run_backfill_daily(
         raise ValueError("Option app.database absente de la configuration.")
     plan_path = _backfill_option(config, "plan")
     output = _backfill_option(config, "output")
+    default_sample = str(
+        Path(plan_path).with_name(
+            "{}-sample.csv".format(Path(plan_path).stem)
+        )
+    )
+    sample_output = config.get(
+        "backfill", "sample", fallback=default_sample
+    ).strip() or default_sample
     profile = config.get("backfill", "profile", fallback="standard").strip()
     model = config.get("ai", "model", fallback="gpt-5.6-luna").strip()
     try:
@@ -546,6 +659,7 @@ def run_backfill_daily(
             "backfill", "enrichment_limit", fallback=100
         )
         article_limit = config.getint("backfill", "article_limit", fallback=15)
+        sample_size = config.getint("backfill", "sample_size", fallback=50)
         budget_usd = config.getfloat("backfill", "budget_usd", fallback=0.0)
     except ValueError:
         raise ValueError("Une option numérique ou booléenne [backfill] est invalide.") from None
@@ -558,6 +672,8 @@ def run_backfill_daily(
         config_path=config_path,
         enrichment_limit=enrichment_limit,
         http_opener=http_opener,
+        sample_output=sample_output,
+        sample_size=sample_size,
     )
     if not enabled or not ai_enabled:
         return {

@@ -141,19 +141,25 @@ Créer ensuite un premier plan lisible, sans enrichissement et sans IA :
 python3 -m veille backfill-plan \
   --database data/veille.sqlite \
   --output out/rattrapage-plan.json \
+  --sample-output out/rattrapage-sample.csv \
+  --sample-size 100 \
   --profile standard \
   --format human
 ```
 
-Pour une estimation fondée sur les abstracts, enrichir gratuitement par lots. La
-commande peut être relancée : le cache évite les appels déjà réussis et aucun appel
-OpenAI n’est effectué. Attendre que le rapport affiche `Prêt pour l’IA  oui` :
+Pour une estimation fondée sur les abstracts, enrichir gratuitement par lots. Seuls
+les candidats du profil choisi sont contactés. La commande peut être relancée : le
+cache évite les appels déjà réussis et aucun appel OpenAI n’est effectué. Le CSV
+répartit l’échantillon sur toute la liste pour permettre un contrôle humain du
+bruit. Attendre que le rapport affiche `Prêt pour l’IA  oui` :
 
 ```bash
 python3 -m veille backfill-plan \
   --config veille-scientifique.ini \
   --database data/veille.sqlite \
   --output out/rattrapage-plan.json \
+  --sample-output out/rattrapage-sample.csv \
+  --sample-size 100 \
   --profile standard \
   --enrichment-limit 100 \
   --format human
@@ -195,6 +201,8 @@ publications par passage et actualise le plan, sans IA et sans envoi :
 enabled = false
 plan = /volume1/Bellegarde/veille-scientifique/out/rattrapage-plan.json
 output = /volume1/Bellegarde/veille-scientifique/out/rattrapage.html
+sample = /volume1/Bellegarde/veille-scientifique/out/rattrapage-sample.csv
+sample_size = 100
 profile = standard
 enrichment_limit = 100
 article_limit = 15

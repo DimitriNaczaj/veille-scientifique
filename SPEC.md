@@ -48,6 +48,8 @@ Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque front
 34. En tant qu’exploitant du NAS, je veux voir une estimation attendue, prudente et maximale fondée sur des tarifs datés, afin de choisir un profil de filtrage en connaissance de cause.
 35. En tant qu’exploitant du NAS, je veux imposer un budget cumulé à toute la campagne et le vérifier avant chaque appel, afin qu’une succession de digests ne puisse pas contourner le plafond.
 36. En tant que consultant Bellegarde, je veux recevoir les résultats par digests de rattrapage limités et dédupliqués avec la veille quotidienne, afin de dépouiller le corpus progressivement.
+37. En tant qu’exploitant du NAS, je veux enrichir uniquement les publications candidates du profil choisi, afin de ne pas solliciter inutilement Crossref et les éditeurs.
+38. En tant que consultant Bellegarde, je veux comparer les profils et contrôler un échantillon CSV de leurs candidats sans IA, afin d’ajuster le niveau de bruit avant toute dépense.
 
 ## Implementation Decisions
 
@@ -93,9 +95,10 @@ Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque front
 - La commande `daily` enchaîne synchronisation, ingestion, enrichissement, analyse, génération et livraison. `--no-send`, `--no-ai` et les plafonds permettent une validation contrôlée. Sa sortie reste en JSON par défaut pour les appels automatisés ; `--format human` produit un rapport français multiligne, y compris en cas d’erreur, sans modifier le code de sortie.
 - Le lanceur NAS `scripts/run-daily.sh` demande le format humain par défaut pour rendre l’appel SSH et les journaux DSM directement lisibles. La variable `VEILLE_REPORT_FORMAT=json` rétablit la sortie machine.
 - Le Planificateur de tâches DSM lance `daily` une fois par jour avec des chemins absolus, un fichier INI en mode `600` et la clé IA dans l’environnement du compte dédié.
-- L’installation depuis le dépôt GitHub privé utilise un jeton finement limité au seul dépôt avec `Contents: read`. Le jeton est saisi masqué, n’est jamais persisté par le wizard et est retiré avant les tests, diagnostics et exécutions quotidiennes.
+- Le wizard tente d’abord l’installation publique sans jeton. Si le dépôt est privé, il utilise un jeton finement limité au seul dépôt avec `Contents: read`, saisi masqué, jamais persisté et retiré avant les tests, diagnostics et exécutions quotidiennes.
 - Le rattrapage s’appuie sur les publications non livrables importées par MBOX dans la base principale. `backfill-plan` peut enrichir leurs métadonnées mais ne construit jamais de client IA et écrit un plan JSON adressé par son empreinte SHA-256.
 - Les profils `strict`, `standard` et `large` correspondent respectivement aux seuils locaux 5, 2 et 1. Un plan comportant encore des enrichissements en attente ne peut pas autoriser l’IA.
+- Le plan compare en un passage les volumes des trois profils avant abstracts, enrichit uniquement les candidats du profil actif et calcule l’état prêt sur ces seuls candidats. Un échantillon CSV déterministe et réparti sur toute la liste permet leur contrôle humain.
 - Les prix du modèle sont versionnés avec leur date. Le plafond budgétaire retient le tarif d’entrée le plus défavorable, y compris une éventuelle écriture de cache, et la sortie maximale configurée ; un changement de prix invalide le plan.
 - `backfill-run` exige un plan intact et un budget en dollars strictement positif. Il additionne les tokens de toutes les analyses du rattrapage déjà mises en cache avant de réserver le coût maximal du prochain appel.
 - Un digest de rattrapage contient au plus 15 articles retenus par défaut, utilise le préfixe d’objet `Rattrapage`, puis marque comme livrées les références analysées et les exclusions locales seulement après une livraison réussie ou un `--no-send` explicite.
