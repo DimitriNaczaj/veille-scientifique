@@ -185,3 +185,24 @@ Conclusions :
   ajouter Europe PMC à OpenAlex fait gagner 13 points sur le corpus Elsevier ;
 - environ 46 % des articles Elsevier suivis n’ont de résumé dans aucune
   source ouverte ; seul un accès institutionnel les couvrirait.
+
+## Gain mesuré sur l’arriéré du NAS (27 août 2026)
+
+La base de production compte 1 848 publications enrichies sans résumé, dont
+1 341 connues par leur seule URL ScienceDirect, sans DOI enregistré. Les
+catalogues ouverts n’interrogeant que par DOI, ces publications leur étaient
+inaccessibles : la vue `META` d’Elsevier sert désormais de relais, puisqu’elle
+fournit le DOI sans le résumé.
+
+Mesure sur un échantillon de 40 URL tirées de cet arriéré, cascade complète :
+
+| Étape | Résultat |
+| --- | --- |
+| DOI résolus par Elsevier `META` | 38/40 (95 %) |
+| Résumés récupérés | 25/40 (**62 %**) |
+| Échecs de source | aucun |
+
+Extrapolation : environ 840 résumés récupérables sur les 1 341 concernés.
+
+Restent 28 entrées en cache disposant d’un DOI mais hors ScienceDirect, que la
+politique de reprise actuelle ne réessaie pas.

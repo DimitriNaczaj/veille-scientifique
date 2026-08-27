@@ -1,7 +1,7 @@
 import json
 from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 from urllib.request import Request, urlopen
 
 from . import __version__
@@ -175,6 +175,17 @@ class PublisherPageClient:
         )
 
 
+def _doi_from_url(url):
+    """Extrait le DOI d’une URL ``https://doi.org/...``."""
+    if not url:
+        return None
+    parsed = urlsplit(str(url))
+    if (parsed.hostname or "").casefold() not in ("doi.org", "dx.doi.org"):
+        return None
+    doi = unquote(parsed.path).lstrip("/").strip()
+    return doi if doi.startswith("10.") else None
+
+
 def _merge_metadata(primary, secondary):
     if primary is None:
         return secondary
@@ -268,6 +279,15 @@ class MetadataCascade:
         pii = pii_from_sciencedirect_url(url)
         if pii and self.elsevier_client is not None:
             primary = self.elsevier_client.fetch_by_pii(pii)
+            if primary is not None and primary.abstract:
+                return primary
+        # Sans résumé, la vue META d’Elsevier fournit tout de même le DOI.
+        # C’est la seule clé d’entrée des catalogues ouverts, qui n’acceptent
+        # pas les PII : sans ce relais, une publication connue par sa seule
+        # URL ScienceDirect n’atteindrait jamais OpenAlex ni Europe PMC.
+        doi = _doi_from_url(primary.url) if primary is not None else None
+        if doi:
+            primary = self.fetch_open_sources(doi, primary)
             if primary is not None and primary.abstract:
                 return primary
         secondary = self.publisher_client.fetch_by_url(url)

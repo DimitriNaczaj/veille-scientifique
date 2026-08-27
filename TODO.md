@@ -3,6 +3,10 @@
 - [ ] Ajouter à chaque article un bouton « Ajouter à Zotero ».
 - [ ] Ajouter, pour chaque auteur, un lien vers sa recherche Google Scholar.
 
+## Livré en version 0.7.1
+
+- [x] Relayer aux catalogues ouverts le DOI qu’Elsevier fournit en vue `META`.
+
 ## Livré en version 0.7.0
 
 - [x] Enrichir les résumés par OpenAlex quand Crossref n’en fournit pas.

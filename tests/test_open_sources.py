@@ -223,3 +223,86 @@ class CascadeOpenSourceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _ElsevierStub:
+    """Vue META : métadonnées et DOI, mais jamais de résumé."""
+
+    def __init__(self, doi="10.1016/j.jenvman.2026.130563"):
+        self.doi = doi
+        self.calls = 0
+
+    def fetch_by_pii(self, pii):
+        self.calls += 1
+        return WorkMetadata(
+            title="Titre Elsevier",
+            abstract=None,
+            journal="Journal of Environmental Management",
+            published_date="2026-08-15",
+            authors=("Yu H.",),
+            url="https://doi.org/" + self.doi,
+        )
+
+
+SD_URL = "https://www.sciencedirect.com/science/article/pii/S0301479726020232"
+
+
+class CascadeByUrlTests(unittest.TestCase):
+    def test_elsevier_doi_opens_the_way_to_open_sources(self):
+        openalex = _Client(_metadata(abstract="Résumé OpenAlex"))
+        publisher = _Client()
+        cascade = MetadataCascade(
+            _Client(),
+            publisher,
+            elsevier_client=_ElsevierStub(),
+            openalex_client=openalex,
+        )
+
+        metadata = cascade.fetch_by_url(SD_URL)
+
+        self.assertEqual(metadata.abstract, "Résumé OpenAlex")
+        self.assertEqual(metadata.journal, "Journal of Environmental Management")
+        self.assertEqual(openalex.calls, 1)
+        self.assertEqual(publisher.calls, 0)
+
+    def test_doi_is_passed_verbatim_to_the_open_sources(self):
+        seen = []
+
+        class _Recorder(_Client):
+            def fetch_by_doi(self, doi):
+                seen.append(doi)
+                return None
+
+        cascade = MetadataCascade(
+            _Client(),
+            _Client(),
+            elsevier_client=_ElsevierStub(),
+            openalex_client=_Recorder(),
+        )
+        cascade.fetch_by_url(SD_URL)
+
+        self.assertEqual(seen, ["10.1016/j.jenvman.2026.130563"])
+
+    def test_page_fallback_still_runs_when_open_sources_are_empty(self):
+        publisher = _Client(_metadata(abstract="Résumé éditeur"))
+        cascade = MetadataCascade(
+            _Client(),
+            publisher,
+            elsevier_client=_ElsevierStub(),
+            openalex_client=_Client(),
+            europepmc_client=_Client(),
+        )
+
+        self.assertEqual(cascade.fetch_by_url(SD_URL).abstract, "Résumé éditeur")
+        self.assertEqual(publisher.calls, 1)
+
+    def test_non_sciencedirect_url_does_not_call_the_open_sources(self):
+        openalex = _Client(_metadata(abstract="jamais lu"))
+        publisher = _Client(_metadata(abstract="Résumé éditeur"))
+        cascade = MetadataCascade(
+            _Client(), publisher, openalex_client=openalex
+        )
+
+        cascade.fetch_by_url("https://example.org/article/1")
+
+        self.assertEqual(openalex.calls, 0)
