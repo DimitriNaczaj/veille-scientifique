@@ -246,7 +246,7 @@ class BackfillPlanCommandTests(unittest.TestCase):
                 reservation_id, status = store.reserve_backfill_budget(
                     provisional.identity,
                     "gpt-5.6-luna",
-                    "bellegarde-v2",
+                    "bellegarde-v3",
                     0.01,
                     1.0,
                     0.0,
@@ -280,7 +280,7 @@ class BackfillPlanCommandTests(unittest.TestCase):
                 retried_id, retried_status = store.reserve_backfill_budget(
                     "doi:10.1234/norms",
                     "gpt-5.6-luna",
-                    "bellegarde-v2",
+                    "bellegarde-v3",
                     0.01,
                     0.005,
                     0.0,
@@ -322,7 +322,7 @@ class BackfillPlanCommandTests(unittest.TestCase):
                 completed_id, _ = store.reserve_backfill_budget(
                     "title:norms",
                     "gpt-5.6-luna",
-                    "bellegarde-v2",
+                    "bellegarde-v3",
                     0.01,
                     1.0,
                     0.0,
@@ -333,7 +333,7 @@ class BackfillPlanCommandTests(unittest.TestCase):
                 reserved_id, _ = store.reserve_backfill_budget(
                     "doi:10.1234/norms",
                     "gpt-5.6-luna",
-                    "bellegarde-v2",
+                    "bellegarde-v3",
                     0.01,
                     1.0,
                     0.0,

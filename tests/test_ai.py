@@ -82,7 +82,7 @@ class OpenAIAnalyzerTests(unittest.TestCase):
         self.assertFalse(payload["store"])
         self.assertTrue(payload["text"]["format"]["strict"])
         self.assertEqual(payload["text"]["format"]["type"], "json_schema")
-        self.assertEqual(analysis.prompt_version, "bellegarde-v2")
+        self.assertEqual(analysis.prompt_version, "bellegarde-v3")
         self.assertIn("Accepte toute méta-analyse pertinente", payload["instructions"])
         self.assertIn(
             "n’accepte une revue de littérature que si",

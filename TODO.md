@@ -3,6 +3,12 @@
 - [ ] Ajouter à chaque article un bouton « Ajouter à Zotero ».
 - [ ] Ajouter, pour chaque auteur, un lien vers sa recherche Google Scholar.
 
+## Livré en version 0.10.0
+
+- [x] Réviser la consigne de tri IA (`bellegarde-v3`) après arbitrage humain.
+- [x] Placer un test de périmètre avant toute considération de méthode.
+- [x] Cesser d’écarter le travail applicatif faible mais dans le périmètre.
+
 ## Livré en version 0.9.1
 
 - [x] Chercher les titres chez Crossref, dont la recherche est gratuite.

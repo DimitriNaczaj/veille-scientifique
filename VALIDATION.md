@@ -325,3 +325,49 @@ Reprise réelle sur copie de la base, 80 entrées :
 | --- | --- | --- |
 | 0.9.0 (200 entrées) | 37 (18 %) | 98 |
 | 0.9.1 (80 entrées) | **30 (37 %)** | **0** |
+
+## Révision de la consigne de tri IA (27 août 2026)
+
+Comparaison à l’aveugle de `gpt-5.6-luna` et de Claude Opus 5 sur 34 articles
+tirés du plan de rattrapage, jugés avec la consigne `bellegarde-v2`. Les
+verdicts ont été appariés, étiquettes masquées, position tirée au sort à
+17 contre 17, puis arbitrés par le consultant.
+
+Résultat agrégé : 12 pour `gpt-5.6-luna`, 10 pour Opus 5, 12 égalités. En
+séparant les cas où les modèles jugeaient différemment de ceux où ils
+jugeaient pareil, deux signaux opposés apparaissent :
+
+| Sous-ensemble | Opus 5 | gpt-5.6-luna |
+| --- | --- | --- |
+| Jugement (11 verdicts divergents) | **7** | 4 |
+| Écriture (11 verdicts identiques) | 3 | **8** |
+
+Aucune variable de surface mesurée — longueur, longueur de phrase, mentions
+de réserves méthodologiques, densité de chiffres — ne prédit les choix
+d’écriture : toutes ressortent autour de 6 sur 11.
+
+Les 34 arbitrages ont servi de référence. Contre elle : Opus 5 obtient 30/34,
+`bellegarde-v2` 27/34. La consigne a été révisée en deux itérations puis
+atteint 31/34 — score surajusté, la révision ayant été réglée contre ce même
+jeu.
+
+Validation sur 30 articles tirés de la même population et jamais utilisés
+pour le réglage :
+
+| | Consigne actuelle | Consigne révisée |
+| --- | --- | --- |
+| Duels remportés (9 divergences) | 1 | **7** |
+
+Un duel n’a été attribué à aucune des deux. Sur les 8 départagés, p unilatéral
+= 0,035. Sur les 21 verdicts concordants servant de contrôle, 18 ont été jugés
+justes, 3 trop généreux et aucun trop sévère.
+
+La consigne révisée est adoptée sous le nom `bellegarde-v3`. Elle place un
+test de périmètre avant toute considération de méthode, classe en watch
+plutôt qu’en excluded le travail applicatif méthodologiquement faible, et
+borne l’accès au niveau high par des critères négatifs plutôt que par une
+liste d’exemples, celle-ci ayant été lue comme un ensemble de conditions
+suffisantes.
+
+Coût : 773 à 1 150 tokens d’entrée par article, soit environ 0,16 $US
+supplémentaires sur l’ensemble du rattrapage.
