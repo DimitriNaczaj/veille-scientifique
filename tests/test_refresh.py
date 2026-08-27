@@ -191,3 +191,70 @@ class RefreshTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QueueProgressTests(RefreshTests):
+    def test_two_runs_cover_different_entries(self):
+        """Sans avancement de la file, le second lot rejouerait le premier."""
+        for index in range(4):
+            self.fixture.seed("pub-{}".format(index), "10.1016/x{}".format(index))
+        # Horodatages distincts : la seconde près, l’ensemencement les
+        # rendrait égaux et masquerait l’ordre de la file.
+        store = Store(self.fixture.database)
+        try:
+            for index in range(4):
+                store.connection.execute(
+                    "UPDATE publication_metadata SET checked_at = ? "
+                    "WHERE publication_identity = ?",
+                    ("2026-01-0{}T00:00:00+00:00".format(index + 1),
+                     "pub-{}".format(index)),
+                )
+            store.connection.commit()
+        finally:
+            store.close()
+
+        seen = []
+
+        def opener(request, timeout=None):
+            import io
+            from email.message import Message
+            from urllib.error import HTTPError
+
+            url = request.full_url
+            if "openalex.org" in url:
+                seen.append(url)
+            raise HTTPError(url, 404, "Not Found", Message(), io.BytesIO(b""))
+
+        for _ in range(2):
+            refresh_missing_abstracts(
+                self.fixture.database,
+                self.fixture.config,
+                limit=2,
+                http_opener=opener,
+            )
+
+        first, second = seen[:2], seen[2:4]
+        self.assertEqual(len(set(first + second)), 4)
+        self.assertEqual(set(first) & set(second), set())
+
+    def test_a_failed_entry_keeps_its_status_and_stays_empty(self):
+        self.fixture.seed("pub-1", "10.1016/x")
+
+        refresh_missing_abstracts(
+            self.fixture.database,
+            self.fixture.config,
+            limit=10,
+            http_opener=self._opener_for(None),
+        )
+
+        store = Store(self.fixture.database)
+        try:
+            status, abstract = store.connection.execute(
+                "SELECT status, abstract FROM publication_metadata "
+                "WHERE publication_identity = ?",
+                ("pub-1",),
+            ).fetchone()
+        finally:
+            store.close()
+        self.assertEqual(status, "not_found")
+        self.assertIsNone(abstract)

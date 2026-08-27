@@ -687,6 +687,20 @@ class Store:
                 ),
             )
 
+    def touch_metadata(self, identity):
+        """Note qu’une reprise a eu lieu, sans rien changer d’autre.
+
+        La file de reprise est ordonnée par ``checked_at``. Sans cette mise à
+        jour, une entrée qui échoue garde sa date et reste en tête : chaque
+        exécution rejouerait indéfiniment le même lot au lieu d’avancer.
+        """
+        with self.connection:
+            self.connection.execute(
+                "UPDATE publication_metadata SET checked_at = ? "
+                "WHERE publication_identity = ?",
+                (_utc_now(), identity),
+            )
+
     def save_metadata_not_found(self, identity, status="not_found"):
         if status not in (
             "not_found",

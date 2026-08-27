@@ -57,6 +57,9 @@ def refresh_missing_abstracts(database, config_path, limit=100, http_opener=None
             except Exception as error:
                 consecutive_failures += 1
                 warnings.append("{} : {}".format(reference, error))
+                # L’entrée passe en fin de file même en cas d’échec, sinon le
+                # lot suivant rejouerait exactement les mêmes entrées.
+                store.touch_metadata(identity)
                 if consecutive_failures >= 3:
                     warnings.append(
                         "Reprise interrompue après trois erreurs consécutives "
@@ -66,6 +69,7 @@ def refresh_missing_abstracts(database, config_path, limit=100, http_opener=None
                 continue
             consecutive_failures = 0
             if metadata is None or not metadata.abstract:
+                store.touch_metadata(identity)
                 continue
             store.save_metadata(identity, metadata)
             recovered += 1

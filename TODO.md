@@ -3,6 +3,10 @@
 - [ ] Ajouter à chaque article un bouton « Ajouter à Zotero ».
 - [ ] Ajouter, pour chaque auteur, un lien vers sa recherche Google Scholar.
 
+## Livré en version 0.8.2
+
+- [x] Faire avancer la file de reprise même quand une entrée reste sans résumé.
+
 ## Livré en version 0.8.1
 
 - [x] Cesser de lire les pages ScienceDirect, que l’éditeur bloque.

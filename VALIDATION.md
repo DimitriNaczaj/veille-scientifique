@@ -247,3 +247,19 @@ d’interrompre un lot.
 
 La cascade s’arrête donc après Elsevier et les catalogues ouverts pour les URL
 ScienceDirect. Les autres éditeurs restent lus normalement.
+
+## Avancement de la file de reprise (27 août 2026)
+
+La file est ordonnée par `checked_at`. Jusqu’en 0.8.1, seule une reprise
+réussie mettait cette date à jour : une entrée sans résumé conservait son
+horodatage et restait en tête. Chaque exécution rejouait donc exactement le
+même lot. Observé en production : 70 puis 175 résumés récupérés, puis 2, puis
+0, sans que la file progresse.
+
+Chaque tentative note désormais son passage, succès ou non. Vérifié sur copie
+de la base de production : la tête de file est passée du 22 au 26 août après
+deux lots de 60.
+
+Rendement des 1 097 entrées ScienceDirect restantes, sur 25 tirées au hasard :
+**16 résumés sur 25 (64 %)**. Le rendement nul des derniers lots venait de la
+tête de file, occupée par des redirections APA et AAAS improductives.
