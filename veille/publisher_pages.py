@@ -6,6 +6,8 @@ from urllib.request import Request, urlopen
 
 from . import __version__
 from .elsevier import pii_from_sciencedirect_url
+from .europepmc import EuropePmcError
+from .openalex import OpenAlexError
 from .mail_diagnostics import create_tls_context
 from .models import WorkMetadata
 
@@ -189,13 +191,33 @@ def _merge_metadata(primary, secondary):
 
 
 class MetadataCascade:
-    def __init__(self, crossref_client, publisher_client, elsevier_client=None):
+    def __init__(
+        self,
+        crossref_client,
+        publisher_client,
+        elsevier_client=None,
+        openalex_client=None,
+        europepmc_client=None,
+    ):
         self.crossref_client = crossref_client
         self.publisher_client = publisher_client
         self.elsevier_client = elsevier_client
+        self.openalex_client = openalex_client
+        self.europepmc_client = europepmc_client
+        self.source_failures = {}
+
+    def _open_sources(self):
+        """Sources ouvertes interrogées par DOI, dans l’ordre de rendement."""
+        return (
+            ("OpenAlex", self.openalex_client, OpenAlexError),
+            ("Europe PMC", self.europepmc_client, EuropePmcError),
+        )
 
     def fetch_by_doi(self, doi, source_url=None):
         primary = self.fetch_primary_by_doi(doi)
+        if primary is not None and primary.abstract:
+            return primary
+        primary = self.fetch_open_sources(doi, primary)
         if primary is not None and primary.abstract:
             return primary
         return self.fetch_publisher_fallback(
@@ -203,6 +225,25 @@ class MetadataCascade:
             primary,
             source_url=source_url,
         )
+
+    def fetch_open_sources(self, doi, primary=None):
+        """Complète les métadonnées par les catalogues ouverts.
+
+        Une panne d’un catalogue ne doit pas interrompre l’enrichissement :
+        l’échec est comptabilisé et la chaîne continue sur la source suivante.
+        """
+        for name, client, failure in self._open_sources():
+            if client is None:
+                continue
+            if primary is not None and primary.abstract:
+                break
+            try:
+                candidate = client.fetch_by_doi(doi)
+            except failure:
+                self.source_failures[name] = self.source_failures.get(name, 0) + 1
+                continue
+            primary = _merge_metadata(primary, candidate)
+        return primary
 
     def fetch_primary_by_doi(self, doi):
         return (

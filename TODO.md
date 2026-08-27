@@ -3,6 +3,22 @@
 - [ ] Ajouter à chaque article un bouton « Ajouter à Zotero ».
 - [ ] Ajouter, pour chaque auteur, un lien vers sa recherche Google Scholar.
 
+## Livré en version 0.7.0
+
+- [x] Enrichir les résumés par OpenAlex quand Crossref n’en fournit pas.
+- [x] Compléter par Europe PMC les résumés qu’OpenAlex n’a pas.
+- [x] Poursuivre l’enrichissement malgré la panne d’un catalogue ouvert.
+
+## Livré en version 0.6.5
+
+- [x] Distinguer un refus de vue Elsevier d’une panne de service.
+- [x] Rétrograder l’enrichissement Elsevier vers `META` quand `META_ABS` n’est pas couvert.
+
+## En suspens
+
+- [ ] Accès Elsevier aux résumés (vue `META_ABS`) : mis de côté, suppose une
+      démarche auprès d’Elsevier. Voir VALIDATION.md pour les droits mesurés.
+
 ## Livré en version 0.6.4
 
 - [x] Préserver exactement la casse de l’en-tête d’authentification Elsevier.

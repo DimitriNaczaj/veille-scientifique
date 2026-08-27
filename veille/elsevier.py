@@ -13,6 +13,10 @@ class ElsevierError(RuntimeError):
     pass
 
 
+class ElsevierEntitlementError(ElsevierError):
+    """La clé est valide mais la vue demandée n’est pas couverte."""
+
+
 def elsevier_client_from_config(config, opener=None):
     if not config.has_section("elsevier"):
         return None
@@ -63,6 +67,8 @@ def _authors(payload):
 
 class ElsevierClient:
     BASE_URL = "https://api.elsevier.com/content/abstract/pii/"
+    PREFERRED_VIEW = "META_ABS"
+    FALLBACK_VIEW = "META"
 
     def __init__(self, api_key, timeout=10, opener=None):
         if not api_key or not api_key.strip():
@@ -70,11 +76,11 @@ class ElsevierClient:
         self.api_key = api_key.strip()
         self.timeout = timeout
         self.opener = opener or urlopen
+        self.view = self.PREFERRED_VIEW
+        self.entitlement_notice = None
 
-    def fetch_by_pii(self, pii):
-        if not re.fullmatch(r"[A-Za-z0-9]+", pii or ""):
-            raise ValueError("PII Elsevier invalide.")
-        url = self.BASE_URL + quote(pii, safe="") + "?view=META_ABS"
+    def _request(self, pii, view):
+        url = "{}{}?view={}".format(self.BASE_URL, quote(pii, safe=""), view)
         request = Request(
             url,
             headers={
@@ -85,16 +91,24 @@ class ElsevierClient:
                 ).format(__version__),
             },
         )
-        # urllib normalise sinon ce nom en ``X-els-apikey``. La passerelle
-        # Elsevier attend la casse documentée, malgré l’insensibilité théorique
-        # des en-têtes HTTP.
         request.headers["X-ELS-APIKey"] = self.api_key
         try:
             with self.opener(request, timeout=self.timeout) as response:
-                payload = json.loads(response.read().decode("utf-8"))
+                return json.loads(response.read().decode("utf-8"))
         except HTTPError as error:
             if error.code == 404:
                 return None
+            status = _error_status(error)
+            if status == "AUTHORIZATION_ERROR":
+                raise ElsevierEntitlementError(
+                    "Elsevier HTTP {} : vue {} non couverte par la clé".format(
+                        error.code, view
+                    )
+                ) from error
+            if status == "AUTHENTICATION_ERROR":
+                raise ElsevierError(
+                    "Elsevier HTTP {} : clé API refusée".format(error.code)
+                ) from error
             raise ElsevierError("Elsevier HTTP {}".format(error.code)) from error
         except URLError as error:
             raise ElsevierError(
@@ -102,6 +116,27 @@ class ElsevierClient:
             ) from error
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
             raise ElsevierError("Réponse Elsevier invalide") from error
+
+    def fetch_by_pii(self, pii):
+        if not re.fullmatch(r"[A-Za-z0-9]+", pii or ""):
+            raise ValueError("PII Elsevier invalide.")
+        try:
+            payload = self._request(pii, self.view)
+        except ElsevierEntitlementError:
+            if self.view == self.FALLBACK_VIEW:
+                raise
+            # La clé est reconnue mais l’abonnement ne couvre pas la vue
+            # enrichie. On rétrograde une fois pour toutes vers ``META`` :
+            # sans résumé, mais avec titre, revue, date et auteurs, ce qui
+            # laisse la cascade chercher le résumé sur la page éditeur.
+            self.view = self.FALLBACK_VIEW
+            self.entitlement_notice = (
+                "Clé Elsevier sans droit sur la vue {} : enrichissement "
+                "limité à {} (aucun résumé fourni par l’API)."
+            ).format(self.PREFERRED_VIEW, self.FALLBACK_VIEW)
+            payload = self._request(pii, self.view)
+        if payload is None:
+            return None
 
         root = payload.get("abstracts-retrieval-response")
         if not isinstance(root, dict):
@@ -127,3 +162,20 @@ class ElsevierClient:
 
 def _normalized(value):
     return " ".join(str(value).split()) if value else None
+
+
+def _error_status(error):
+    """Lit ``statusCode`` dans le corps JSON d’une erreur Elsevier."""
+    try:
+        body = error.read()
+    except Exception:
+        return None
+    if not body:
+        return None
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (AttributeError, UnicodeDecodeError, ValueError):
+        return None
+    status = ((payload.get("service-error") or {}).get("status") or {})
+    code = status.get("statusCode") if isinstance(status, dict) else None
+    return str(code).strip().upper() if code else None

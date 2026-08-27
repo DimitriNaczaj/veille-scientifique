@@ -14,6 +14,8 @@ from .crossref import CrossrefClient
 from .delivery import SMTPDigestSender
 from .digest import write_digest
 from .elsevier import elsevier_client_from_config, pii_from_sciencedirect_url
+from .europepmc import europepmc_client_from_config
+from .openalex import openalex_client_from_config
 from .filtering import BehavioralScienceFilter
 from .mail_diagnostics import _load_config
 from .mbox_import import _validate_distinct_paths
@@ -237,6 +239,8 @@ def _enrich_backfill(database, config_path, limit, http_opener, candidates):
         CrossrefClient(contact_email=contact_email, opener=http_opener),
         PublisherPageClient(opener=http_opener),
         elsevier_client=elsevier_client,
+        openalex_client=openalex_client_from_config(config, opener=http_opener),
+        europepmc_client=europepmc_client_from_config(config, opener=http_opener),
     )
     store = Store(database)
     enriched = 0
@@ -297,6 +301,14 @@ def _enrich_backfill(database, config_path, limit, http_opener, candidates):
                     break
     finally:
         store.close()
+    if elsevier_client is not None and elsevier_client.entitlement_notice:
+        warnings.append(elsevier_client.entitlement_notice)
+    for name, count in sorted(provider.source_failures.items()):
+        warnings.append(
+            "{} : {} échec(s) ; enrichissement poursuivi sans cette source.".format(
+                name, count
+            )
+        )
     return enriched, tuple(warnings), metadata_updates
 
 

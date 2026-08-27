@@ -5,6 +5,8 @@ from .ai import OpenAIAnalyzer
 from .crossref import CrossrefClient
 from .delivery import SMTPDigestSender
 from .elsevier import elsevier_client_from_config
+from .europepmc import europepmc_client_from_config
+from .openalex import openalex_client_from_config
 from .filtering import BehavioralScienceFilter
 from .imap_sync import run_imap_sync
 from .mail_diagnostics import _load_config, load_imap_settings
@@ -106,6 +108,8 @@ def run_daily(
             config,
             opener=http_opener,
         ),
+        openalex_client=openalex_client_from_config(config, opener=http_opener),
+        europepmc_client=europepmc_client_from_config(config, opener=http_opener),
     )
 
     warnings = []

@@ -41,6 +41,15 @@ api_key_env = OPENAI_API_KEY
 # La valeur reste dans secrets.env ; seule cette variable est nommée ici.
 api_key_env = ELSEVIER_API_KEY
 
+# Catalogues ouverts interrogés par DOI quand Crossref ne fournit pas de résumé.
+# Ni clé ni abonnement ; l’adresse de contact reprise de app.crossref_email
+# donne accès au « polite pool » d’OpenAlex.
+[openalex]
+enabled = true
+
+[europepmc]
+enabled = true
+
 [backfill]
 # La préparation et l’enrichissement sans IA restent possibles quand enabled = false.
 # Ne passer à true qu’après contrôle du plan et choix du budget total de campagne.

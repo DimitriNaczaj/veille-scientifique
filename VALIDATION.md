@@ -129,3 +129,59 @@ par le NAS après configuration de la clé.
 Le correctif 0.6.4 reproduit le refus observé par un faux endpoint sensible à la
 casse, préserve exactement l’en-tête `X-ELS-APIKey` documenté et valide la structure
 réelle des auteurs `coredata.dc:creator.author` sans inscrire la clé dans l’URL.
+
+## Droits de la clé Elsevier (27 août 2026)
+
+Vérification directe de l’API `content/abstract/pii` avec la clé du NAS :
+
+| Requête | Résultat |
+| --- | --- |
+| en-tête `X-ELS-APIKey`, vue par défaut | `HTTP 200`, sans résumé |
+| en-tête `X-ELS-APIKey`, `view=META` | `HTTP 200`, sans résumé |
+| en-tête `X-ELS-APIKey`, `view=META_ABS` | `HTTP 401 AUTHORIZATION_ERROR` |
+| en-tête `X-ELS-APIKey`, `view=FULL` | `HTTP 401 AUTHORIZATION_ERROR` |
+| `apiKey` en paramètre, `view=META_ABS` | `HTTP 401 AUTHORIZATION_ERROR` |
+| `content/article/pii`, `view=META_ABS` | `HTTP 403 AUTHENTICATION_ERROR` |
+| `search/scopus`, champ `dc:description` | `HTTP 200`, champ retiré de la réponse |
+
+Conclusions :
+
+- la clé est valide et l’authentification par en-tête fonctionne ;
+- le `401` portait sur la vue demandée, non sur la clé ;
+- aucun résumé n’est accessible sans abonnement institutionnel ;
+- les résumés ScienceDirect doivent donc venir de la page éditeur ou d’une
+  source tierce.
+
+## Couverture des résumés par source (27 août 2026)
+
+Mesure sur trois corpus, en interrogeant chaque API par DOI.
+
+Corpus local (565 DOI issus des 22 newsletters de `inbox` : MDPI, Nature) :
+
+| Source | Couverture |
+| --- | --- |
+| OpenAlex | 94 % |
+| Crossref | 93 % |
+| Europe PMC | 2 % |
+| Union | **96 %** |
+
+Échantillon Elsevier tiré des revues suivies (428 DOI, *J. Environmental
+Psychology*, *J. Environmental Management*, *Global Environmental Change*,
+*Ecological Economics*, *Energy Policy*, *Cognition*, *Appetite*, etc.) :
+
+| Source | Couverture |
+| --- | --- |
+| Crossref | 0 % |
+| OpenAlex | 41 % |
+| Europe PMC | 24 % |
+| Union | **54 %** |
+
+Échantillon Elsevier aléatoire (400 DOI, toutes disciplines) : union 46 %.
+
+Conclusions :
+
+- Crossref ne contient aucun résumé Elsevier : l’éditeur n’en dépose pas ;
+- les deux catalogues ouverts sont complémentaires et non redondants —
+  ajouter Europe PMC à OpenAlex fait gagner 13 points sur le corpus Elsevier ;
+- environ 46 % des articles Elsevier suivis n’ont de résumé dans aucune
+  source ouverte ; seul un accès institutionnel les couvrirait.
