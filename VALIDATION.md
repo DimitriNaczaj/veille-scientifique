@@ -231,3 +231,19 @@ Essai sur copie de la base, 40 entrées, ordre `checked_at` croissant :
 8 résumés récupérés. Ce premier lot n’est pas représentatif — il contient
 24 redirections de traçage pour seulement 9 URL ScienceDirect, alors que
 ces dernières forment 73 % de la file et rendent 62 % de résumés.
+
+## Lecture des pages ScienceDirect abandonnée (27 août 2026)
+
+Les mesures du 27 août montrent que ScienceDirect refuse toute lecture
+automatisée : `HTTP 403` et page de vérification, avec ou sans en-tête de
+navigateur, y compris depuis un navigateur complet. En production, l’essai se
+solde le plus souvent par une expiration du délai de 10 secondes.
+
+Sur 500 reprises, trois avertissements d’expiration ont été remontés, dont
+deux sur des URL passerelle ScienceDirect. Étendu aux 1 341 entrées
+ScienceDirect de la file, l’essai représentait jusqu’à 3 h 40 d’attente pure,
+et ces échecs alimentaient le compteur d’erreurs consécutives susceptible
+d’interrompre un lot.
+
+La cascade s’arrête donc après Elsevier et les catalogues ouverts pour les URL
+ScienceDirect. Les autres éditeurs restent lus normalement.

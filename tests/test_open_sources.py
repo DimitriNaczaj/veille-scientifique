@@ -283,18 +283,21 @@ class CascadeByUrlTests(unittest.TestCase):
 
         self.assertEqual(seen, ["10.1016/j.jenvman.2026.130563"])
 
-    def test_page_fallback_still_runs_when_open_sources_are_empty(self):
-        publisher = _Client(_metadata(abstract="Résumé éditeur"))
+    def test_elsevier_metadata_survives_when_no_abstract_is_found(self):
+        """Sans résumé, titre, revue et auteurs restent acquis."""
         cascade = MetadataCascade(
             _Client(),
-            publisher,
+            _Client(_metadata(abstract="jamais lu")),
             elsevier_client=_ElsevierStub(),
             openalex_client=_Client(),
             europepmc_client=_Client(),
         )
 
-        self.assertEqual(cascade.fetch_by_url(SD_URL).abstract, "Résumé éditeur")
-        self.assertEqual(publisher.calls, 1)
+        metadata = cascade.fetch_by_url(SD_URL)
+
+        self.assertIsNone(metadata.abstract)
+        self.assertEqual(metadata.title, "Titre Elsevier")
+        self.assertEqual(metadata.authors, ("Yu H.",))
 
     def test_non_sciencedirect_url_does_not_call_the_open_sources(self):
         openalex = _Client(_metadata(abstract="jamais lu"))
@@ -306,3 +309,28 @@ class CascadeByUrlTests(unittest.TestCase):
         cascade.fetch_by_url("https://example.org/article/1")
 
         self.assertEqual(openalex.calls, 0)
+
+
+class SciencedirectPageSkipTests(unittest.TestCase):
+    def test_sciencedirect_page_is_never_fetched(self):
+        publisher = _Client(_metadata(abstract="jamais lu"))
+        cascade = MetadataCascade(
+            _Client(),
+            publisher,
+            elsevier_client=_ElsevierStub(),
+            openalex_client=_Client(),
+            europepmc_client=_Client(),
+        )
+
+        metadata = cascade.fetch_by_url(SD_URL)
+
+        self.assertEqual(publisher.calls, 0)
+        self.assertEqual(metadata.journal, "Journal of Environmental Management")
+
+    def test_other_publishers_are_still_fetched(self):
+        publisher = _Client(_metadata(abstract="Résumé éditeur"))
+        cascade = MetadataCascade(_Client(), publisher)
+
+        cascade.fetch_by_url("https://click.info.apa.org/xyz")
+
+        self.assertEqual(publisher.calls, 1)

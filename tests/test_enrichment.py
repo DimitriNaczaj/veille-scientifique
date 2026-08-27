@@ -161,7 +161,7 @@ class CrossrefClientTests(unittest.TestCase):
         )
         self.assertEqual(pii_calls, ["S0167487026000413"])
 
-    def test_elsevier_metadata_without_abstract_falls_back_to_html(self):
+    def test_sciencedirect_page_is_not_fetched_after_elsevier(self):
         class ElsevierWithoutAbstract:
             def fetch_by_pii(self, pii):
                 return WorkMetadata(
@@ -199,12 +199,12 @@ class CrossrefClientTests(unittest.TestCase):
 
         metadata = provider.fetch_by_url(source_url)
 
-        self.assertEqual(
-            metadata.abstract,
-            "A field experiment tests behavioral choices.",
-        )
+        # ScienceDirect bloque toute lecture automatisée : la tenter coûtait
+        # le délai d’attente complet par article, sans jamais aboutir.
+        self.assertEqual(publisher_calls, [])
+        self.assertIsNone(metadata.abstract)
         self.assertEqual(metadata.title, "Behavioral choices from Elsevier")
-        self.assertEqual(publisher_calls, [source_url])
+        self.assertEqual(metadata.journal, "Journal of Behavioral Research")
 
     def test_sciencedirect_url_uses_elsevier_pii_api_for_abstract(self):
         requests = []

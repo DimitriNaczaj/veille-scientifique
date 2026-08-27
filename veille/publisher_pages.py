@@ -290,5 +290,11 @@ class MetadataCascade:
             primary = self.fetch_open_sources(doi, primary)
             if primary is not None and primary.abstract:
                 return primary
+        if pii:
+            # ScienceDirect répond 403 et une page de vérification aux
+            # requêtes automatisées : la lecture de page échoue toujours, le
+            # plus souvent par expiration du délai. L’essayer coûte le délai
+            # complet par article et fait remonter des erreurs trompeuses.
+            return primary
         secondary = self.publisher_client.fetch_by_url(url)
         return _merge_metadata(primary, secondary)
