@@ -559,6 +559,35 @@ class Store:
             ).fetchall()
         )
 
+    def metadata_without_abstract(self, limit):
+        """Entrées déjà enrichies mais sans résumé, réinterrogeables par DOI.
+
+        La sélection automatique ignore volontairement les publications déjà
+        pourvues d’une ligne de métadonnées : sans cela, un article
+        définitivement sans résumé serait réinterrogé à chaque exécution et
+        épuiserait le quota au détriment des nouveautés. Cette reprise est
+        donc explicite et bornée.
+        """
+        return tuple(
+            self.connection.execute(
+                "SELECT p.identity, p.doi, p.url "
+                "FROM publication_metadata pm "
+                "JOIN publications p ON p.identity = pm.publication_identity "
+                "WHERE pm.abstract IS NULL "
+                "AND (p.doi IS NOT NULL OR p.url IS NOT NULL) "
+                "ORDER BY pm.checked_at, p.identity LIMIT ?",
+                (limit,),
+            ).fetchall()
+        )
+
+    def metadata_without_abstract_count(self):
+        return self.connection.execute(
+            "SELECT COUNT(*) FROM publication_metadata pm "
+            "JOIN publications p ON p.identity = pm.publication_identity "
+            "WHERE pm.abstract IS NULL "
+            "AND (p.doi IS NOT NULL OR p.url IS NOT NULL)"
+        ).fetchone()[0]
+
     def backfill_enrichment_pending_count(self):
         return self.connection.execute(
             "SELECT COUNT(*) FROM publications p "

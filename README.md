@@ -438,3 +438,19 @@ chmod 600 secrets.env
 2. retours « utile / inutile » dans le digest ;
 3. export automatique vers Zotero ;
 4. tableau de bord facultatif de supervision.
+
+## Reprise des résumés manquants
+
+Les publications déjà enrichies sans résumé ne sont pas resélectionnées
+automatiquement. Après l’ajout d’une source de résumés, les reprendre par
+lots :
+
+```
+"$PYTHON_BIN" -m veille refresh-abstracts \
+  --config /volume1/Bellegarde/veille-scientifique/veille-scientifique.ini \
+  --database /volume1/Bellegarde/veille-scientifique/data/veille.sqlite \
+  --limit 200
+```
+
+La commande n’écrit que les entrées pour lesquelles un résumé a été trouvé.
+Relancer jusqu’à ce que « Restant sans résumé » cesse de diminuer.

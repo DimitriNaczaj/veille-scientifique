@@ -206,3 +206,28 @@ Extrapolation : environ 840 résumés récupérables sur les 1 341 concernés.
 
 Restent 28 entrées en cache disposant d’un DOI mais hors ScienceDirect, que la
 politique de reprise actuelle ne réessaie pas.
+
+## Reprise des métadonnées sans résumé (27 août 2026)
+
+Les publications déjà pourvues d’une ligne de métadonnées sont exclues des
+sélections automatiques (`pm.publication_identity IS NULL`). Une nouvelle
+source de résumés ne leur profite donc jamais. La commande
+`refresh-abstracts` les réinterroge explicitement, par lots bornés ; la
+sélection automatique reste inchangée pour qu’un article définitivement sans
+résumé n’épuise pas le quota au détriment des nouveautés.
+
+Composition des 1 848 entrées concernées dans la base de production :
+
+| Nature | Nombre |
+| --- | --- |
+| URL ScienceDirect (PII) | 1 341 |
+| Redirection APA (`click.info.apa.org`) | 209 |
+| Redirection AAAS | 124 |
+| Redirection Taylor & Francis | 119 |
+| DOI enregistré | 28 |
+| Wiley, Springer | 27 |
+
+Essai sur copie de la base, 40 entrées, ordre `checked_at` croissant :
+8 résumés récupérés. Ce premier lot n’est pas représentatif — il contient
+24 redirections de traçage pour seulement 9 URL ScienceDirect, alors que
+ces dernières forment 73 % de la file et rendent 62 % de résumés.

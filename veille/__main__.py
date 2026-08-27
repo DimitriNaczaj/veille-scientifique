@@ -16,10 +16,12 @@ from .imap_sync import run_imap_sync
 from .mbox_import import run_mbox_import
 from .mail_diagnostics import run_imap_diagnostic, run_smtp_diagnostic
 from .pipeline import run_pipeline
+from .refresh import refresh_missing_abstracts
 from .reporting import (
     format_backfill_daily,
     format_backfill_plan,
     format_daily_error,
+    format_refresh_report,
     format_daily_report,
 )
 from .secret_migration import (
@@ -134,6 +136,18 @@ def build_parser():
     )
     set_elsevier_key.add_argument(
         "--secrets", required=True, help="Chemin du fichier secrets.env"
+    )
+    refresh = subparsers.add_parser(
+        "refresh-abstracts",
+        help="Réinterroger les métadonnées déjà enrichies mais sans résumé",
+    )
+    refresh.add_argument("--config", required=True, help="Chemin du fichier INI privé")
+    refresh.add_argument("--database", required=True, help="Chemin de la base SQLite")
+    refresh.add_argument(
+        "--limit",
+        type=int,
+        default=100,
+        help="Nombre maximum d’entrées reprises (0–1000, défaut 100)",
     )
     daily = subparsers.add_parser(
         "daily",
@@ -273,6 +287,12 @@ def main(
             )
         elif args.command == "migrate-secrets":
             report = migrate_inline_mail_password(args.config, args.secrets)
+        elif args.command == "refresh-abstracts":
+            report = refresh_missing_abstracts(
+                args.database,
+                args.config,
+                limit=args.limit,
+            )
         elif args.command == "set-openai-key":
             report = set_openai_api_key(args.secrets)
         elif args.command == "set-elsevier-key":
@@ -347,6 +367,8 @@ def main(
         print(format_backfill_plan(report_payload))
     elif args.command == "backfill-daily" and args.report_format == "human":
         print(format_backfill_daily(report_payload))
+    elif args.command == "refresh-abstracts":
+        print(format_refresh_report(report_payload))
     else:
         print(json.dumps(report_payload, ensure_ascii=False, sort_keys=True))
     return 1 if getattr(report, "errors", ()) else 0

@@ -3,6 +3,10 @@
 - [ ] Ajouter à chaque article un bouton « Ajouter à Zotero ».
 - [ ] Ajouter, pour chaque auteur, un lien vers sa recherche Google Scholar.
 
+## Livré en version 0.8.0
+
+- [x] Reprendre à la demande les métadonnées enrichies sans résumé.
+
 ## Livré en version 0.7.1
 
 - [x] Relayer aux catalogues ouverts le DOI qu’Elsevier fournit en vue `META`.

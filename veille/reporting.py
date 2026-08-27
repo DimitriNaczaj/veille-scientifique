@@ -24,6 +24,21 @@ def _message_summary(lines, label, messages, empty_label):
     lines.extend("  - {}".format(message) for message in messages)
 
 
+def format_refresh_report(report):
+    lines = [
+        "REPRISE DES RÉSUMÉS",
+        "===================",
+        _row("Entrées sans résumé", report.get("pending_before", 0)),
+        _row("Reprises tentées", report.get("attempted", 0)),
+        _row("Résumés récupérés", report.get("recovered", 0)),
+        _row("Restant sans résumé", report.get("remaining", 0)),
+    ]
+    _message_summary(
+        lines, "Avertissements", _unique_messages(report.get("warnings")), "aucun"
+    )
+    return "\n".join(lines)
+
+
 def format_daily_error(error):
     detail = str(error).strip() or "Erreur inconnue"
     return "\n".join(
