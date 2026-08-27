@@ -331,6 +331,7 @@ cp -R "$SOURCE_DIR"/. "$INSTALL_ROOT"/
 chmod +x \
   "$INSTALL_ROOT/scripts/run-daily.sh" \
   "$INSTALL_ROOT/scripts/run-backfill.sh" \
+  "$INSTALL_ROOT/scripts/run-refresh.sh" \
   "$INSTALL_ROOT/scripts/install-nas.sh"
 touch "$INSTALL_ROOT/.veille-installation"
 mkdir -p \

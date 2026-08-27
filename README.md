@@ -446,11 +446,11 @@ automatiquement. Après l’ajout d’une source de résumés, les reprendre par
 lots :
 
 ```
-"$PYTHON_BIN" -m veille refresh-abstracts \
-  --config /volume1/Bellegarde/veille-scientifique/veille-scientifique.ini \
-  --database /volume1/Bellegarde/veille-scientifique/data/veille.sqlite \
-  --limit 200
+bash /volume1/Bellegarde/veille-scientifique/scripts/run-refresh.sh
 ```
+
+Le script charge les secrets, sauvegarde la base au préalable et traite
+200 entrées. Pour un autre volume : `REFRESH_LIMIT=500 bash .../run-refresh.sh`.
 
 La commande n’écrit que les entrées pour lesquelles un résumé a été trouvé.
 Relancer jusqu’à ce que « Restant sans résumé » cesse de diminuer.
