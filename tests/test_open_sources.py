@@ -458,41 +458,7 @@ class TitleMatchingTests(unittest.TestCase):
         self.assertNotIn("%7C", needle)  # |
         self.assertNotIn("%E2%80%99", needle)  # apostrophe courbe
 
-    def test_a_rate_limit_is_retried_once(self):
-        codes = [429, 200]
-
-        def opener(request, timeout=None):
-            import io
-            from email.message import Message
-            from urllib.error import HTTPError
-
-            code = codes.pop(0)
-            if code == 429:
-                raise HTTPError(
-                    request.full_url, 429, "Too Many Requests", Message(),
-                    io.BytesIO(b""),
-                )
-            return _Response(
-                {
-                    "results": [
-                        {
-                            "id": "https://openalex.org/W1",
-                            "display_name": "Citizen engagement in climate adaptation",
-                            "abstract_inverted_index": {"Résumé": [0]},
-                        }
-                    ]
-                }
-            )
-
-        client = OpenAlexClient(opener=opener)
-        client.RETRY_DELAY = 0
-
-        metadata = client.fetch_by_title("Citizen engagement in climate adaptation")
-
-        self.assertIsNotNone(metadata)
-        self.assertEqual(codes, [])
-
-    def test_a_persistent_rate_limit_is_reported(self):
+    def _rate_limited(self):
         def opener(request, timeout=None):
             import io
             from email.message import Message
@@ -502,8 +468,98 @@ class TitleMatchingTests(unittest.TestCase):
                 request.full_url, 429, "Too Many Requests", Message(), io.BytesIO(b"")
             )
 
-        client = OpenAlexClient(opener=opener)
-        client.RETRY_DELAY = 0
+        return OpenAlexClient(opener=opener)
 
-        with self.assertRaises(OpenAlexError):
+    def test_an_exhausted_budget_returns_nothing_without_raising(self):
+        client = self._rate_limited()
+
+        self.assertIsNone(
             client.fetch_by_title("Citizen engagement in climate adaptation")
+        )
+        self.assertTrue(client.search_budget_exhausted)
+
+    def test_no_further_search_is_attempted_once_the_budget_is_gone(self):
+        calls = []
+
+        def opener(request, timeout=None):
+            import io
+            from email.message import Message
+            from urllib.error import HTTPError
+
+            calls.append(request.full_url)
+            raise HTTPError(
+                request.full_url, 429, "Too Many Requests", Message(), io.BytesIO(b"")
+            )
+
+        client = OpenAlexClient(opener=opener)
+        client.fetch_by_title("Citizen engagement in climate adaptation")
+        client.fetch_by_title("Another title long enough to be searched for")
+
+        self.assertEqual(len(calls), 1)
+
+    def test_a_doi_lookup_still_works_after_the_search_budget_is_gone(self):
+        """La consultation par DOI est gratuite : elle ne doit pas être bloquée."""
+        client = OpenAlexClient(
+            opener=lambda r, timeout=None: _Response(OPENALEX_WORK)
+        )
+        client.search_budget_exhausted = True
+
+        self.assertIsNotNone(client.fetch_by_doi("10.1016/x"))
+
+
+class CrossrefTitleChainTests(unittest.TestCase):
+    """Crossref par titre rend un DOI, qui rouvre les catalogues gratuits."""
+
+    def _crossref(self, abstract=None, doi="10.1016/j.jenvp.2026.103187"):
+        client = _TitleClient(
+            WorkMetadata(
+                title="Un titre assez long pour être comparé",
+                abstract=abstract,
+                journal="Revue",
+                published_date=None,
+                authors=(),
+                url="https://doi.org/" + doi,
+            )
+        )
+        return client
+
+    def test_crossref_is_tried_before_the_paid_openalex_search(self):
+        crossref = self._crossref(abstract="Résumé Crossref")
+        openalex = _TitleClient(_metadata(abstract="jamais lu"))
+        cascade = MetadataCascade(crossref, _Client(), openalex_client=openalex)
+
+        metadata = cascade.fetch_by_url(
+            "https://click.info.apa.org/x", title="Un titre assez long pour être comparé"
+        )
+
+        self.assertEqual(metadata.abstract, "Résumé Crossref")
+        self.assertEqual(openalex.titles, [])
+
+    def test_the_doi_found_by_title_reaches_the_open_catalogues(self):
+        openalex = _TitleClient(_metadata(abstract="Résumé OpenAlex par DOI"))
+        cascade = MetadataCascade(
+            self._crossref(), _Client(), openalex_client=openalex
+        )
+
+        metadata = cascade.fetch_by_url(
+            "https://click.info.apa.org/x", title="Un titre assez long pour être comparé"
+        )
+
+        self.assertEqual(metadata.abstract, "Résumé OpenAlex par DOI")
+        # Consulté par DOI (gratuit), jamais par titre (payant).
+        self.assertEqual(openalex.calls, 1)
+        self.assertEqual(openalex.titles, [])
+
+    def test_openalex_title_search_is_the_last_resort(self):
+        openalex = _TitleClient(_metadata(abstract="Résumé par titre"))
+        openalex.metadata_by_doi = None
+        cascade = MetadataCascade(
+            _TitleClient(None), _Client(), openalex_client=openalex
+        )
+
+        metadata = cascade.fetch_by_url(
+            "https://click.info.apa.org/x", title="Un titre assez long pour être comparé"
+        )
+
+        self.assertEqual(metadata.abstract, "Résumé par titre")
+        self.assertEqual(len(openalex.titles), 1)

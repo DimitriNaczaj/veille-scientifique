@@ -292,3 +292,36 @@ Deux limites relevées et corrigées :
 
 Un titre trouvé dont la similarité est inférieure à 0,90 est rejeté :
 rattacher le résumé d’un autre article serait pire que n’en rattacher aucun.
+
+## Budget de recherche OpenAlex (27 août 2026)
+
+OpenAlex facture désormais ses requêtes en crédits. Réponse observée :
+
+```
+HTTP 429
+retry-after: 43204
+x-ratelimit-limit: 1000
+x-ratelimit-credits-required: 10
+"Insufficient budget. […] Resets at midnight UTC."
+```
+
+Soit **1 000 crédits par jour et 10 crédits par recherche**, donc cent
+recherches quotidiennes. Un lot de 200 entrées en demandait le double : sur
+une exécution réelle, 98 appels sur 200 ont été refusés.
+
+En revanche, une consultation par DOI a répondu `HTTP 200` alors qu’il ne
+restait que 4 crédits, **sans en consommer**. La cascade principale n’est donc
+pas concernée ; seules les recherches le sont.
+
+Le dernier recours par titre passe désormais par Crossref, dont la recherche
+est gratuite et sans plafond : elle retrouve le DOI dans 23 cas sur 25, et ce
+DOI rouvre l’accès gratuit à OpenAlex et Europe PMC. La recherche OpenAlex par
+titre n’intervient qu’ensuite et cesse dès le premier refus, au lieu
+d’échouer à chaque entrée.
+
+Reprise réelle sur copie de la base, 80 entrées :
+
+| Version | Récupérés | Échecs OpenAlex |
+| --- | --- | --- |
+| 0.9.0 (200 entrées) | 37 (18 %) | 98 |
+| 0.9.1 (80 entrées) | **30 (37 %)** | **0** |

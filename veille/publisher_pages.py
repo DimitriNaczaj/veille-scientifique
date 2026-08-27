@@ -7,6 +7,7 @@ from urllib.request import Request, urlopen
 from . import __version__
 from .elsevier import pii_from_sciencedirect_url
 from .europepmc import EuropePmcError
+from .crossref import CrossrefError
 from .openalex import OpenAlexError
 from .mail_diagnostics import create_tls_context
 from .models import WorkMetadata
@@ -244,20 +245,50 @@ class MetadataCascade:
         Les signaux issus des lettres d’information n’ont souvent qu’un titre
         et un lien de traçage. Quand le lien ne mène nulle part, le titre
         reste le seul identifiant exploitable.
+
+        Crossref est interrogé d’abord : sa recherche est gratuite et sans
+        plafond, et le DOI qu’elle rend rouvre l’accès aux catalogues ouverts,
+        dont la consultation par DOI ne coûte rien. La recherche OpenAlex par
+        titre, elle, consomme un budget quotidien limité à cent requêtes : elle
+        n’intervient qu’en dernier.
         """
         if not title or (primary is not None and primary.abstract):
             return primary
+        primary = self._title_via_crossref(title, primary)
+        if primary is not None and primary.abstract:
+            return primary
+        return self._title_via_openalex(title, primary)
+
+    def _title_via_crossref(self, title, primary):
+        client = self.crossref_client
+        if client is None or not hasattr(client, "fetch_by_title"):
+            return primary
+        try:
+            candidate = client.fetch_by_title(title)
+        except CrossrefError:
+            self._note_failure("Crossref")
+            return primary
+        if candidate is None:
+            return primary
+        primary = _merge_metadata(primary, candidate)
+        if primary.abstract:
+            return primary
+        doi = _doi_from_url(candidate.url)
+        return self.fetch_open_sources(doi, primary) if doi else primary
+
+    def _title_via_openalex(self, title, primary):
         client = self.openalex_client
         if client is None or not hasattr(client, "fetch_by_title"):
             return primary
         try:
             candidate = client.fetch_by_title(title)
         except OpenAlexError:
-            self.source_failures["OpenAlex"] = (
-                self.source_failures.get("OpenAlex", 0) + 1
-            )
+            self._note_failure("OpenAlex")
             return primary
         return _merge_metadata(primary, candidate)
+
+    def _note_failure(self, name):
+        self.source_failures[name] = self.source_failures.get(name, 0) + 1
 
     def fetch_open_sources(self, doi, primary=None):
         """Complète les métadonnées par les catalogues ouverts.
@@ -273,7 +304,7 @@ class MetadataCascade:
             try:
                 candidate = client.fetch_by_doi(doi)
             except failure:
-                self.source_failures[name] = self.source_failures.get(name, 0) + 1
+                self._note_failure(name)
                 continue
             primary = _merge_metadata(primary, candidate)
         return primary

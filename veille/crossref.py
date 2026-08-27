@@ -6,6 +6,7 @@ from urllib.request import Request, urlopen
 
 from . import __version__
 from .models import WorkMetadata
+from .titles import same_work, searchable
 
 
 class CrossrefError(RuntimeError):
@@ -73,6 +74,19 @@ def _authors(message):
     return tuple(names)
 
 
+def _metadata_from_message(message):
+    doi = _first_string(message.get("DOI"))
+    return WorkMetadata(
+        title=_first_string(message.get("title")),
+        abstract=_plain_text(message.get("abstract")),
+        journal=_first_string(message.get("container-title")),
+        published_date=_published_date(message),
+        authors=_authors(message),
+        url=_first_string(message.get("URL"))
+        or ("https://doi.org/" + doi if doi else None),
+    )
+
+
 class CrossrefClient:
     BASE_URL = "https://api.crossref.org/works/"
 
@@ -80,6 +94,51 @@ class CrossrefClient:
         self.contact_email = contact_email
         self.timeout = timeout
         self.opener = opener or urlopen
+
+    SEARCH_URL = "https://api.crossref.org/works"
+
+    def _request(self, url):
+        agent = (
+            "veille-scientifique/{} "
+            "(+https://github.com/DimitriNaczaj/veille-scientifique)"
+        ).format(__version__)
+        if self.contact_email:
+            agent += " mailto:{}".format(self.contact_email)
+        request = Request(url, headers={"Accept": "application/json", "User-Agent": agent})
+        try:
+            with self.opener(request, timeout=self.timeout) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except HTTPError as error:
+            if error.code == 404:
+                return None
+            raise CrossrefError("Crossref HTTP {}".format(error.code)) from error
+        except URLError as error:
+            raise CrossrefError("Crossref indisponible : {}".format(error.reason)) from error
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise CrossrefError("Réponse Crossref invalide") from error
+
+    def fetch_by_title(self, title):
+        """Retrouve une publication par son titre.
+
+        Crossref n’impose pas de budget : c’est la voie utilisable à grande
+        échelle quand une publication n’est connue que par son titre et un
+        lien de traçage devenu inexploitable. Le résultat n’est retenu que si
+        son titre correspond réellement à celui demandé.
+        """
+        needle = searchable(title)
+        if not needle:
+            return None
+        query = {"query.bibliographic": needle, "rows": "1"}
+        if self.contact_email:
+            query["mailto"] = self.contact_email
+        payload = self._request(self.SEARCH_URL + "?" + urlencode(query))
+        items = ((payload or {}).get("message") or {}).get("items") or []
+        if not items or not isinstance(items[0], dict):
+            return None
+        message = items[0]
+        if not same_work(title, _first_string(message.get("title"))):
+            return None
+        return _metadata_from_message(message)
 
     def fetch_by_doi(self, doi):
         url = self.BASE_URL + quote(doi, safe="")
@@ -107,11 +166,4 @@ class CrossrefClient:
         message = payload.get("message")
         if not isinstance(message, dict):
             raise CrossrefError("Réponse Crossref sans métadonnées")
-        return WorkMetadata(
-            title=_first_string(message.get("title")),
-            abstract=_plain_text(message.get("abstract")),
-            journal=_first_string(message.get("container-title")),
-            published_date=_published_date(message),
-            authors=_authors(message),
-            url=_first_string(message.get("URL")),
-        )
+        return _metadata_from_message(message)

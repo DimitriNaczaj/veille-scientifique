@@ -3,6 +3,11 @@
 - [ ] Ajouter à chaque article un bouton « Ajouter à Zotero ».
 - [ ] Ajouter, pour chaque auteur, un lien vers sa recherche Google Scholar.
 
+## Livré en version 0.9.1
+
+- [x] Chercher les titres chez Crossref, dont la recherche est gratuite.
+- [x] Cesser d’interroger OpenAlex dès son budget quotidien épuisé.
+
 ## Livré en version 0.9.0
 
 - [x] Retrouver par leur titre les publications dont le lien ne mène nulle part.
