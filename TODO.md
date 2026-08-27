@@ -3,6 +3,12 @@
 - [ ] Ajouter à chaque article un bouton « Ajouter à Zotero ».
 - [ ] Ajouter, pour chaque auteur, un lien vers sa recherche Google Scholar.
 
+## Livré en version 0.9.0
+
+- [x] Retrouver par leur titre les publications dont le lien ne mène nulle part.
+- [x] Rejeter tout titre trouvé qui ne correspond pas à celui demandé.
+- [x] Réessayer une fois quand OpenAlex limite le débit.
+
 ## Livré en version 0.8.2
 
 - [x] Faire avancer la file de reprise même quand une entrée reste sans résumé.

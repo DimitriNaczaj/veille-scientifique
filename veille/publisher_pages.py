@@ -224,18 +224,40 @@ class MetadataCascade:
             ("Europe PMC", self.europepmc_client, EuropePmcError),
         )
 
-    def fetch_by_doi(self, doi, source_url=None):
+    def fetch_by_doi(self, doi, source_url=None, title=None):
         primary = self.fetch_primary_by_doi(doi)
         if primary is not None and primary.abstract:
             return primary
         primary = self.fetch_open_sources(doi, primary)
         if primary is not None and primary.abstract:
             return primary
-        return self.fetch_publisher_fallback(
+        found = self.fetch_publisher_fallback(
             doi,
             primary,
             source_url=source_url,
         )
+        return self.fetch_by_known_title(title, found)
+
+    def fetch_by_known_title(self, title, primary=None):
+        """Dernier recours : retrouver la publication par son titre.
+
+        Les signaux issus des lettres d’information n’ont souvent qu’un titre
+        et un lien de traçage. Quand le lien ne mène nulle part, le titre
+        reste le seul identifiant exploitable.
+        """
+        if not title or (primary is not None and primary.abstract):
+            return primary
+        client = self.openalex_client
+        if client is None or not hasattr(client, "fetch_by_title"):
+            return primary
+        try:
+            candidate = client.fetch_by_title(title)
+        except OpenAlexError:
+            self.source_failures["OpenAlex"] = (
+                self.source_failures.get("OpenAlex", 0) + 1
+            )
+            return primary
+        return _merge_metadata(primary, candidate)
 
     def fetch_open_sources(self, doi, primary=None):
         """Complète les métadonnées par les catalogues ouverts.
@@ -274,7 +296,7 @@ class MetadataCascade:
         secondary = self.fetch_by_url(url)
         return _merge_metadata(primary, secondary)
 
-    def fetch_by_url(self, url):
+    def fetch_by_url(self, url, title=None):
         primary = None
         pii = pii_from_sciencedirect_url(url)
         if pii and self.elsevier_client is not None:
@@ -295,6 +317,6 @@ class MetadataCascade:
             # requêtes automatisées : la lecture de page échoue toujours, le
             # plus souvent par expiration du délai. L’essayer coûte le délai
             # complet par article et fait remonter des erreurs trompeuses.
-            return primary
+            return self.fetch_by_known_title(title, primary)
         secondary = self.publisher_client.fetch_by_url(url)
-        return _merge_metadata(primary, secondary)
+        return self.fetch_by_known_title(title, _merge_metadata(primary, secondary))

@@ -570,7 +570,8 @@ class Store:
         """
         return tuple(
             self.connection.execute(
-                "SELECT p.identity, p.doi, p.url "
+                "SELECT p.identity, p.doi, p.url, "
+                "COALESCE(pm.title, p.title) "
                 "FROM publication_metadata pm "
                 "JOIN publications p ON p.identity = pm.publication_identity "
                 "WHERE pm.abstract IS NULL "

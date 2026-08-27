@@ -263,3 +263,32 @@ deux lots de 60.
 Rendement des 1 097 entrées ScienceDirect restantes, sur 25 tirées au hasard :
 **16 résumés sur 25 (64 %)**. Le rendement nul des derniers lots venait de la
 tête de file, occupée par des redirections APA et AAAS improductives.
+
+## Recherche par titre (27 août 2026)
+
+Après un parcours complet de la file, 904 entrées restaient sans résumé :
+406 ScienceDirect, 474 redirections de lettres d’information et 20 DOI.
+
+Les redirections mènent à des pages bloquées (`psycnet.apa.org` répond 403)
+ou à des liens expirés (`redirect_error.html`). Le lien est donc inexploitable,
+mais 900 de ces 904 entrées possèdent un titre.
+
+Recherche OpenAlex par titre, sur 30 entrées tirées au hasard :
+
+| Résultat | Nombre |
+| --- | --- |
+| Titre retrouvé (similarité ≥ 0,90) | 24/30 |
+| Dont pourvu d’un résumé | **19/30** |
+
+Reprise réelle sur copie de la base, 60 entrées qui ne rendaient plus rien :
+**30 résumés récupérés**.
+
+Deux limites relevées et corrigées :
+
+- la ponctuation des titres (`?`, virgule, apostrophe courbe) provoquait des
+  refus `HTTP 400` : seuls les mots sont désormais transmis ;
+- des appels trop rapprochés provoquent un `HTTP 429` : le client patiente
+  puis réessaie une fois.
+
+Un titre trouvé dont la similarité est inférieure à 0,90 est rejeté :
+rattacher le résumé d’un autre article serait pire que n’en rattacher aucun.

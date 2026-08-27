@@ -334,3 +334,176 @@ class SciencedirectPageSkipTests(unittest.TestCase):
         cascade.fetch_by_url("https://click.info.apa.org/xyz")
 
         self.assertEqual(publisher.calls, 1)
+
+
+class _TitleClient(_Client):
+    def __init__(self, metadata=None, error=None):
+        _Client.__init__(self, metadata, error)
+        self.titles = []
+
+    def fetch_by_title(self, title):
+        self.titles.append(title)
+        if self.error is not None:
+            raise self.error
+        return self.metadata
+
+
+class TitleFallbackTests(unittest.TestCase):
+    def test_title_is_used_when_the_link_leads_nowhere(self):
+        openalex = _TitleClient(_metadata(abstract="Résumé par titre"))
+        cascade = MetadataCascade(
+            _Client(), _Client(), openalex_client=openalex
+        )
+
+        metadata = cascade.fetch_by_url(
+            "https://click.info.apa.org/xyz", title="Un titre assez long pour compter"
+        )
+
+        self.assertEqual(metadata.abstract, "Résumé par titre")
+        self.assertEqual(openalex.titles, ["Un titre assez long pour compter"])
+
+    def test_title_search_is_skipped_when_an_abstract_exists(self):
+        openalex = _TitleClient(_metadata(abstract="jamais lu"))
+        cascade = MetadataCascade(
+            _Client(),
+            _Client(_metadata(abstract="Résumé éditeur")),
+            openalex_client=openalex,
+        )
+
+        cascade.fetch_by_url("https://example.org/a", title="Un titre assez long")
+
+        self.assertEqual(openalex.titles, [])
+
+    def test_sciencedirect_without_abstract_falls_back_to_the_title(self):
+        openalex = _TitleClient(_metadata(abstract="Résumé par titre"))
+        cascade = MetadataCascade(
+            _Client(),
+            _Client(),
+            elsevier_client=_ElsevierStub(),
+            openalex_client=openalex,
+        )
+
+        metadata = cascade.fetch_by_url(SD_URL, title="Un titre assez long pour compter")
+
+        self.assertEqual(metadata.abstract, "Résumé par titre")
+        self.assertEqual(metadata.title, "Titre Elsevier")
+
+    def test_a_failing_title_search_is_counted_not_raised(self):
+        cascade = MetadataCascade(
+            _Client(),
+            _Client(),
+            openalex_client=_TitleClient(error=OpenAlexError("panne")),
+        )
+
+        metadata = cascade.fetch_by_url("https://example.org/a", title="Un titre assez long")
+
+        self.assertIsNone(metadata)
+        self.assertEqual(cascade.source_failures, {"OpenAlex": 1})
+
+
+class TitleMatchingTests(unittest.TestCase):
+    def _client(self, returned_title, abstract="Résumé"):
+        payload = {
+            "results": [
+                {
+                    "id": "https://openalex.org/W1",
+                    "display_name": returned_title,
+                    "abstract_inverted_index": {
+                        w: [i] for i, w in enumerate(abstract.split())
+                    },
+                }
+            ]
+        }
+        return OpenAlexClient(opener=lambda r, timeout=None: _Response(payload))
+
+    def test_a_close_title_is_accepted(self):
+        client = self._client("Citizen engagement in climate adaptation")
+
+        metadata = client.fetch_by_title("Citizen engagement in climate adaptation")
+
+        self.assertIsNotNone(metadata)
+
+    def test_a_different_article_is_rejected(self):
+        client = self._client("Something else entirely about marine biology")
+
+        self.assertIsNone(
+            client.fetch_by_title("Citizen engagement in climate adaptation")
+        )
+
+    def test_a_short_title_is_not_searched(self):
+        calls = []
+
+        def opener(request, timeout=None):
+            calls.append(request.full_url)
+            return _Response({"results": []})
+
+        OpenAlexClient(opener=opener).fetch_by_title("Trop court")
+
+        self.assertEqual(calls, [])
+
+    def test_only_words_reach_the_query(self):
+        seen = {}
+
+        def opener(request, timeout=None):
+            seen["url"] = request.full_url
+            return _Response({"results": []})
+
+        OpenAlexClient(opener=opener).fetch_by_title(
+            "Resilient by design? Attitudes, beliefs: children’s | part one"
+        )
+
+        needle = seen["url"].split("title.search%3A")[-1].split("&")[0]
+        self.assertNotIn("%3F", needle)  # ?
+        self.assertNotIn("%2C", needle)  # ,
+        self.assertNotIn("%7C", needle)  # |
+        self.assertNotIn("%E2%80%99", needle)  # apostrophe courbe
+
+    def test_a_rate_limit_is_retried_once(self):
+        codes = [429, 200]
+
+        def opener(request, timeout=None):
+            import io
+            from email.message import Message
+            from urllib.error import HTTPError
+
+            code = codes.pop(0)
+            if code == 429:
+                raise HTTPError(
+                    request.full_url, 429, "Too Many Requests", Message(),
+                    io.BytesIO(b""),
+                )
+            return _Response(
+                {
+                    "results": [
+                        {
+                            "id": "https://openalex.org/W1",
+                            "display_name": "Citizen engagement in climate adaptation",
+                            "abstract_inverted_index": {"Résumé": [0]},
+                        }
+                    ]
+                }
+            )
+
+        client = OpenAlexClient(opener=opener)
+        client.RETRY_DELAY = 0
+
+        metadata = client.fetch_by_title("Citizen engagement in climate adaptation")
+
+        self.assertIsNotNone(metadata)
+        self.assertEqual(codes, [])
+
+    def test_a_persistent_rate_limit_is_reported(self):
+        def opener(request, timeout=None):
+            import io
+            from email.message import Message
+            from urllib.error import HTTPError
+
+            raise HTTPError(
+                request.full_url, 429, "Too Many Requests", Message(), io.BytesIO(b"")
+            )
+
+        client = OpenAlexClient(opener=opener)
+        client.RETRY_DELAY = 0
+
+        with self.assertRaises(OpenAlexError):
+            client.fetch_by_title("Citizen engagement in climate adaptation")

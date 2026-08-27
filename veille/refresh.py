@@ -45,14 +45,14 @@ def refresh_missing_abstracts(database, config_path, limit=100, http_opener=None
     consecutive_failures = 0
     try:
         pending = store.metadata_without_abstract_count()
-        for identity, doi, url in store.metadata_without_abstract(limit):
+        for identity, doi, url, title in store.metadata_without_abstract(limit):
             attempted += 1
             reference = doi or url
             try:
                 metadata = (
-                    provider.fetch_by_doi(doi, source_url=url)
+                    provider.fetch_by_doi(doi, source_url=url, title=title)
                     if doi
-                    else provider.fetch_by_url(url)
+                    else provider.fetch_by_url(url, title=title)
                 )
             except Exception as error:
                 consecutive_failures += 1
