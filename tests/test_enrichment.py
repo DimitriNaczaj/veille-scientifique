@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from urllib.error import HTTPError
 
 from tests.test_pipeline import write_email
 from veille.crossref import CrossrefClient
@@ -210,6 +211,15 @@ class CrossrefClientTests(unittest.TestCase):
 
         def open_request(request, timeout):
             requests.append((request, timeout))
+            headers = dict(request.header_items())
+            if headers.get("X-ELS-APIKey") != "elsevier-secret":
+                raise HTTPError(
+                    request.full_url,
+                    401,
+                    "Invalid API Key",
+                    {},
+                    None,
+                )
             return StubResponse(
                 {
                     "abstracts-retrieval-response": {
@@ -222,12 +232,12 @@ class CrossrefClientTests(unittest.TestCase):
                             "prism:publicationName": "Journal of Economic Psychology",
                             "prism:coverDate": "2026-08-26",
                             "prism:doi": "10.1016/j.joep.2026.102999",
-                        },
-                        "authors": {
-                            "author": [
-                                {"ce:indexed-name": "Martin, A."},
-                                {"ce:indexed-name": "Bernard, L."},
-                            ]
+                            "dc:creator": {
+                                "author": [
+                                    {"ce:indexed-name": "Martin, A."},
+                                    {"ce:indexed-name": "Bernard, L."},
+                                ]
+                            },
                         },
                     }
                 }
@@ -264,7 +274,10 @@ class CrossrefClientTests(unittest.TestCase):
             "https://api.elsevier.com/content/abstract/pii/"
             "S0167487026000413?view=META_ABS",
         )
-        self.assertEqual(request.get_header("X-els-apikey"), "elsevier-secret")
+        self.assertEqual(
+            dict(request.header_items()).get("X-ELS-APIKey"),
+            "elsevier-secret",
+        )
         self.assertNotIn("elsevier-secret", request.full_url)
         self.assertEqual(timeout, 7)
 

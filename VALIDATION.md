@@ -125,3 +125,7 @@ La version 0.6.3 reprend ces références par lots via l’API Elsevier officiel
 avant tout appel IA. Cette mesure donne le plafond du pilote, pas son taux de
 réussite : la couverture réelle des abstracts sera calculée sur le rapport produit
 par le NAS après configuration de la clé.
+
+Le correctif 0.6.4 reproduit le refus observé par un faux endpoint sensible à la
+casse, préserve exactement l’en-tête `X-ELS-APIKey` documenté et valide la structure
+réelle des auteurs `coredata.dc:creator.author` sans inscrire la clé dans l’URL.

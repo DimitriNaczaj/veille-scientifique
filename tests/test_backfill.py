@@ -167,7 +167,7 @@ class BackfillPlanCommandTests(unittest.TestCase):
             self.assertFalse(plan["ready_for_ai"])
             self.assertEqual(len(requests), 1)
             self.assertEqual(
-                requests[0].get_header("X-els-apikey"),
+                dict(requests[0].header_items()).get("X-ELS-APIKey"),
                 "elsevier-secret",
             )
             self.assertNotIn("elsevier-secret", requests[0].full_url)

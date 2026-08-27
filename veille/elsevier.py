@@ -45,7 +45,9 @@ def pii_from_sciencedirect_url(url):
 
 
 def _authors(payload):
-    container = payload.get("authors") or {}
+    core = payload.get("coredata") or {}
+    creator = core.get("dc:creator") if isinstance(core, dict) else {}
+    container = payload.get("authors") or creator or {}
     authors = container.get("author") if isinstance(container, dict) else []
     if isinstance(authors, dict):
         authors = [authors]
@@ -81,9 +83,12 @@ class ElsevierClient:
                     "veille-scientifique/{} "
                     "(+https://github.com/DimitriNaczaj/veille-scientifique)"
                 ).format(__version__),
-                "X-ELS-APIKey": self.api_key,
             },
         )
+        # urllib normalise sinon ce nom en ``X-els-apikey``. La passerelle
+        # Elsevier attend la casse documentée, malgré l’insensibilité théorique
+        # des en-têtes HTTP.
+        request.headers["X-ELS-APIKey"] = self.api_key
         try:
             with self.opener(request, timeout=self.timeout) as response:
                 payload = json.loads(response.read().decode("utf-8"))

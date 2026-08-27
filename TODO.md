@@ -3,6 +3,11 @@
 - [ ] Ajouter à chaque article un bouton « Ajouter à Zotero ».
 - [ ] Ajouter, pour chaque auteur, un lien vers sa recherche Google Scholar.
 
+## Livré en version 0.6.4
+
+- [x] Préserver exactement la casse de l’en-tête d’authentification Elsevier.
+- [x] Lire les auteurs dans la structure JSON réellement renvoyée par l’API.
+
 ## Livré en version 0.6.3
 
 - [x] Tester l’enrichissement des liens ScienceDirect par PII via l’API Elsevier.
