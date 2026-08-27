@@ -9,8 +9,9 @@ Application de veille scientifique autonome et légère pour Synology DS218.
 - synchronisation IMAP incrémentale du dossier `Articles` par UID, en lecture seule ;
 - extraction des DOI depuis le texte et les liens HTML ;
 - découverte des articles sans DOI depuis les titres et liens de suivi des éditeurs pris en charge ;
-- enrichissement par Crossref puis par métadonnées HTML/JSON-LD des pages éditeurs ;
-- cache Crossref persistant et reprise après panne ;
+- enrichissement par Crossref, par l’API Elsevier pour les liens ScienceDirect,
+  puis par les métadonnées HTML/JSON-LD des pages éditeurs ;
+- cache d’enrichissement persistant et reprise après panne ;
 - préfiltrage explicable en sciences comportementales, avec exclusions prudentes
   des corrections, sommaires et usages manifestement non humains des mots-clés ;
 - classement en « Priorité élevée » et « À surveiller » ;
@@ -24,8 +25,10 @@ Application de veille scientifique autonome et légère pour Synology DS218.
 - aucune dépendance Python externe.
 
 Une référence sans DOI est conservée provisoirement à partir de son titre normalisé.
-Crossref ne contient pas un abstract pour chaque DOI : le digest affiche uniquement
-les métadonnées réellement disponibles et signale les références encore provisoires.
+Crossref ne contient pas un abstract pour chaque DOI. Pour Elsevier, l’application
+utilise le PII présent dans les liens ScienceDirect et l’API officielle lorsqu’une
+clé est configurée. Le digest affiche uniquement les métadonnées réellement
+disponibles et signale les références encore provisoires.
 L’application ne télécharge pas les PDF et ne contourne aucun paywall.
 
 Les évolutions envisagées pour la version 2 sont suivies dans
@@ -37,7 +40,7 @@ Après avoir adapté `veille-scientifique.ini.example` et chargé les secrets da
 l’environnement, une seule commande réalise le parcours complet :
 
 ```bash
-SCIENCE_DIGEST_MAIL_PASSWORD=... OPENAI_API_KEY=... python3 -m veille daily \
+SCIENCE_DIGEST_MAIL_PASSWORD=... OPENAI_API_KEY=... ELSEVIER_API_KEY=... python3 -m veille daily \
   --config veille-scientifique.ini
 ```
 
@@ -148,7 +151,7 @@ python3 -m veille backfill-plan \
   --format human
 ```
 
-Pour une estimation fondée sur les abstracts, enrichir gratuitement par lots. Seuls
+Pour une estimation fondée sur les abstracts, enrichir sans IA par lots. Seuls
 les candidats du profil choisi sont contactés. La commande peut être relancée : le
 cache évite les appels déjà réussis et aucun appel OpenAI n’est effectué. Le CSV
 répartit l’échantillon sur toute la liste pour permettre un contrôle humain du
@@ -165,6 +168,17 @@ python3 -m veille backfill-plan \
   --enrichment-limit 100 \
   --format human
 ```
+
+Lors de la première exécution après ajout d’une clé Elsevier, les anciens liens
+ScienceDirect restés en cache avec le statut `not_found` sont repris par PII. Le
+plafond `--enrichment-limit` s’applique aussi à cette reprise ; régénérer le plan
+jusqu’à ce que `Enrichissements en attente` atteigne zéro. Un PII confirmé absent
+de l’API est mémorisé et ne sera pas sollicité à chaque passage.
+
+Sur le NAS, `scripts/run-backfill.sh` charge automatiquement `secrets.env`. Pour
+lancer directement `python3 -m veille backfill-plan` dans un terminal, exporter au
+préalable les variables de ce fichier dans la session ; ne jamais coller une clé
+dans la ligne de commande ou dans l’INI.
 
 Le plan compare une consommation attendue, prudente et maximale. Les tarifs figés
 pour `gpt-5.6-luna` sont datés dans le plan : 0,20 $ par million de tokens d’entrée,
@@ -390,12 +404,22 @@ unset MAIL_PASSWORD
 chmod 600 secrets.env
 ```
 
-La clé OpenAI doit être enregistrée avec la commande dédiée. Elle remplace toute
-ancienne valeur, refuse les collages multilignes et n’affiche jamais la clé :
+Les clés OpenAI et Elsevier doivent être enregistrées avec leurs commandes dédiées.
+Elles remplacent toute ancienne valeur, refusent les collages multilignes et ne
+s’affichent jamais :
 
 ```bash
 python3 -m veille set-openai-key --secrets secrets.env
+python3 -m veille set-elsevier-key --secrets secrets.env
 ```
+
+La clé Elsevier est distincte de la clé OpenAI et sert uniquement à récupérer les
+métadonnées et abstracts des liens ScienceDirect par leur PII. La configuration ne
+contient que `api_key_env = ELSEVIER_API_KEY` ; la valeur reste dans
+`secrets.env`, protégé en mode `600`. Elle se demande sur le
+[portail développeur Elsevier](https://dev.elsevier.com/apikey/create). Les droits,
+quotas et éventuels coûts dépendent de l’usage et des abonnements ; une organisation
+commerciale doit vérifier sa licence auprès d’Elsevier avant la mise en production.
 
 Si le serveur SMTP utilise un compte ou un mot de passe distinct, ajouter
 `username` et `password_env = SCIENCE_DIGEST_SMTP_PASSWORD` dans `[smtp]`, puis

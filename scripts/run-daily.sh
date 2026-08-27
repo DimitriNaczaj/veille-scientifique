@@ -44,6 +44,7 @@ fi
 [ "${SCIENCE_DIGEST_MAIL_PASSWORD+x}" = x ] && export SCIENCE_DIGEST_MAIL_PASSWORD
 [ "${SCIENCE_DIGEST_SMTP_PASSWORD+x}" = x ] && export SCIENCE_DIGEST_SMTP_PASSWORD
 [ "${OPENAI_API_KEY+x}" = x ] && export OPENAI_API_KEY
+[ "${ELSEVIER_API_KEY+x}" = x ] && export ELSEVIER_API_KEY
 
 exec "$PYTHON_BIN" -m veille daily \
     --config "$CONFIG_PATH" \

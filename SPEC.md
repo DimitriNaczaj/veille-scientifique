@@ -6,7 +6,7 @@ Bellegarde reçoit des newsletters d’éditeurs scientifiques contenant plusieu
 
 ## Solution
 
-L’application est un programme Python sans dépendance externe qui synchronise en lecture seule le dossier IMAP `Articles`, traite aussi les messages `.eml` et les historiques MBOX/MBOX.ZIP, identifie et déduplique les publications dans SQLite, enrichit leurs métadonnées via Crossref puis les pages éditeurs, applique un préfiltrage explicable, peut confier le second tri et le résumé à une IA structurée, génère un digest HTML et l’envoie par SMTP.
+L’application est un programme Python sans dépendance externe qui synchronise en lecture seule le dossier IMAP `Articles`, traite aussi les messages `.eml` et les historiques MBOX/MBOX.ZIP, identifie et déduplique les publications dans SQLite, enrichit leurs métadonnées via Crossref, l’API Elsevier pour ScienceDirect, puis les pages éditeurs, applique un préfiltrage explicable, peut confier le second tri et le résumé à une IA structurée, génère un digest HTML et l’envoie par SMTP.
 
 Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque frontière distante est limitée, mise en cache et reprise après échec. Sans clé d’IA, le service reste fonctionnel avec le préfiltre local et les abstracts disponibles ; sans destinataire SMTP configuré, un mode sans envoi permet une validation complète sur disque.
 
@@ -68,7 +68,9 @@ Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque front
 - Les liens d’articles sans DOI sont reconnus uniquement sur une liste explicite de domaines d’éditeurs, incluant les relais Wiley et Taylor & Francis ; les liens de navigation, événements et numéros spéciaux connus sont ignorés.
 - Les anciens relais AWS de Nature sont décodés uniquement lorsqu’ils révèlent une URL canonique `nature.com/articles/...`, afin de ne pas conserver un lien de suivi personnalisé.
 - L’API REST Crossref `/works/{doi}` fournit les métadonnées canoniques disponibles ; les DOI sont encodés dans l’URL et une adresse de contact peut identifier l’application.
+- Pour un lien `sciencedirect.com` contenant un PII, l’API officielle Elsevier est interrogée avant la page HTML lorsque `ELSEVIER_API_KEY` est configurée. La clé reste dans `secrets.env`, n’apparaît jamais dans l’URL et n’est transmise que dans l’en-tête `X-ELS-APIKey`.
 - Les réponses enrichies, incomplètes et `not_found` sont mises en cache dans une table SQLite séparée. Un ancien cache Crossref sans abstract est repris une fois par le repli éditeur ; les erreurs transitoires ne remplacent pas ce cache et restent à reprendre.
+- Les anciens `not_found` associés à un PII ScienceDirect sont repris une fois après activation de l’API Elsevier. Un échec définitif Elsevier est mémorisé sous un statut distinct pour éviter une boucle de requêtes.
 - Un lot enrichit au plus 100 DOI par défaut et refuse les limites hors de l’intervalle 0–1 000. Les références au-delà du plafond restent non livrées jusqu’à un passage ultérieur.
 - Trois erreurs d’enrichissement consécutives ouvrent un coupe-circuit pour l’exécution courante.
 - Une exécution sans accès Crossref conserve les DOI non enrichis dans la file d’attente ; elle ne les marque pas comme livrés.
@@ -86,7 +88,7 @@ Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque front
 - La synchronisation IMAP s’appuie sur `UIDVALIDITY` et les UID, télécharge le message RFC822 dans un fichier déterministe écrit atomiquement et sélectionne toujours le dossier en lecture seule.
 - Un état de synchronisation SQLite sépare chaque compte, dossier et `UIDVALIDITY`. Un plafond borne le nombre de téléchargements ; seuls les UID supérieurs au curseur validé sont considérés lors des passages suivants. Si `UIDVALIDITY` change pour un compte et un dossier connus, la commande échoue explicitement avant tout téléchargement.
 - Le premier passage peut télécharger tout le dossier ou positionner le curseur sur le dernier UID sans télécharger l’historique ; dans les deux cas, le curseur n’avance qu’après les écritures réussies.
-- Crossref reste la source canonique des métadonnées DOI. Une page éditeur n’est consultée que lorsqu’un abstract manque et qu’une URL HTTP(S) exploitable existe.
+- Crossref reste la source canonique des métadonnées DOI. Pour un lien ScienceDirect identifiable par PII, l’API Elsevier est prioritaire pour l’abstract ; la page éditeur n’est consultée qu’en repli lorsqu’une URL HTTP(S) exploitable existe.
 - L’extracteur de page lit uniquement les métadonnées HTML standard (`citation_abstract`, Dublin Core, OpenGraph, description et JSON-LD), limite la taille téléchargée et n’essaie pas de contourner un paywall.
 - Le préfiltre local reste le premier niveau. L’IA ne reçoit que le titre, l’abstract et les métadonnées bibliographiques des références candidates, jamais le courriel complet ni les identifiants de boîte.
 - Le fournisseur IA par défaut utilise l’API Responses d’OpenAI, un modèle économique configurable, `store=false` et des Structured Outputs stricts. La clé vient uniquement d’une variable d’environnement.

@@ -88,7 +88,7 @@ seules frontières réseau :
 - arrêt explicite lors d’un changement de `UIDVALIDITY`, reprise d’une panne
   transitoire du repli éditeur et séparation des destinataires test/réel.
 
-La suite automatisée compte 55 tests, tous réussis sous Python 3.14 ; le code cible
+La suite automatisée compte 112 tests, tous réussis sous Python 3.14 ; le code cible
 Python 3.8+ et n’utilise que la bibliothèque standard.
 
 La couche OpenAI n’a pas été appelée avec un compte réel, faute de clé API fournie.
@@ -109,3 +109,19 @@ font passer le profil standard de 2 192 à 2 122 candidats, le profil strict de 
 interventions, la décision humaine, les contextes humains présents seulement dans
 l’abstract et les articles pertinents à faible score. Cette mesure ne remplace pas
 l’examen des abstracts ni la décision IA.
+
+## Pilote Elsevier pour les abstracts
+
+Mesure en lecture seule effectuée le 27 août 2026 sur la base montée du NAS, avant
+tout appel à l’API Elsevier :
+
+- 35 453 références de rattrapage encore disponibles ;
+- 2 121 candidates avec le profil standard courant ;
+- 1 269 candidates ont un lien ScienceDirect avec PII et un ancien statut
+  `not_found` ;
+- ces liens représentent 1 262 PII uniques.
+
+La version 0.6.3 reprend ces références par lots via l’API Elsevier officielle,
+avant tout appel IA. Cette mesure donne le plafond du pilote, pas son taux de
+réussite : la couverture réelle des abstracts sera calculée sur le rapport produit
+par le NAS après configuration de la clé.

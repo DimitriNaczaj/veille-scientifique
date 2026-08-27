@@ -117,7 +117,9 @@ def run_pipeline(
                                 metadata = primary
                             else:
                                 metadata = metadata_provider.fetch_publisher_fallback(
-                                    doi, primary
+                                    doi,
+                                    primary,
+                                    source_url=url,
                                 )
                         else:
                             metadata = metadata_provider.fetch_by_doi(doi)

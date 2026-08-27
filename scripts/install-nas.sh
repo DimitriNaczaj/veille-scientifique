@@ -388,6 +388,7 @@ if [[ "$REUSE_CONFIG" == false ]]; then
     printf 'crossref_email = %s\n' "$MAIL_USERNAME"
     printf '%s\n\n' 'sync_limit = 200' 'enrichment_limit = 100' 'ai_limit = 30'
     printf '%s\n\n' '[ai]' 'enabled = true' 'model = gpt-5.6-luna' 'api_key_env = OPENAI_API_KEY'
+    printf '%s\n\n' '[elsevier]' 'api_key_env = ELSEVIER_API_KEY'
     printf '%s\n' '[backfill]' 'enabled = false'
     printf 'plan = %s/out/rattrapage-plan.json\noutput = %s/out/rattrapage.html\n' \
       "$INSTALL_ROOT" "$INSTALL_ROOT"
@@ -419,6 +420,12 @@ if ! grep -q '^\[backfill\]$' "$CONFIG_PATH"; then
   } >> "$CONFIG_PATH"
   say "Section [backfill] ajoutée, désactivée et sans budget IA."
 fi
+if ! grep -q '^\[elsevier\]$' "$CONFIG_PATH"; then
+  {
+    printf '\n%s\n' '[elsevier]' 'api_key_env = ELSEVIER_API_KEY'
+  } >> "$CONFIG_PATH"
+  say "Section [elsevier] ajoutée ; la clé reste dans secrets.env."
+fi
 chmod 600 "$CONFIG_PATH"
 if [[ "$REUSE_CONFIG" == true ]]; then
   (
@@ -434,6 +441,7 @@ if [[ -f "$SECRETS_PATH" ]]; then
   source "$SECRETS_PATH"
   export SCIENCE_DIGEST_MAIL_PASSWORD SCIENCE_DIGEST_SMTP_PASSWORD \
     OPENAI_API_KEY 2>/dev/null || true
+  [ "${ELSEVIER_API_KEY+x}" = x ] && export ELSEVIER_API_KEY
 fi
 say "Configuration et secrets privés écrits en mode 600. Aucun secret n’est envoyé à GitHub."
 
@@ -499,7 +507,7 @@ printf "VEILLE_ROOT='%s' PYTHON_BIN='%s' '%s/scripts/run-backfill.sh'\n" \
 chmod 600 "$BACKFILL_TASK_COMMAND_FILE"
 step "Après sécurisation des secrets, ouvrez DSM → Panneau de configuration → Planificateur de tâches."
 step "Créez une tâche définie par l’utilisateur et copiez la commande de $TASK_COMMAND_FILE."
-warn "N’activez pas encore cette tâche : nous sécuriserons d’abord le mot de passe et ajouterons la clé OpenAI."
+warn "N’activez pas encore cette tâche : nous sécuriserons d’abord le mot de passe et ajouterons les clés OpenAI et Elsevier."
 
 finish
 note "Installation : $INSTALL_ROOT"

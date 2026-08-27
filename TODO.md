@@ -3,6 +3,12 @@
 - [ ] Ajouter à chaque article un bouton « Ajouter à Zotero ».
 - [ ] Ajouter, pour chaque auteur, un lien vers sa recherche Google Scholar.
 
+## Livré en version 0.6.3
+
+- [x] Tester l’enrichissement des liens ScienceDirect par PII via l’API Elsevier.
+- [x] Reprendre par lots les anciens `not_found` Elsevier sans appel IA.
+- [x] Stocker la clé Elsevier hors de l’INI avec une saisie masquée.
+
 ## Livré en version 0.6.2
 
 - [x] Réduire les faux positifs structurels du préfiltre sans durcir le profil standard.

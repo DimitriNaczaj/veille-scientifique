@@ -6,6 +6,21 @@ ROOT = Path(__file__).parents[1]
 
 
 class PrivateInstallerTests(unittest.TestCase):
+    def test_installer_prepares_elsevier_key_without_embedding_it_in_config(self):
+        script = (ROOT / "scripts" / "install-nas.sh").read_text(
+            encoding="utf-8"
+        )
+        example = (ROOT / "veille-scientifique.ini.example").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("[elsevier]", script)
+        self.assertIn("api_key_env = ELSEVIER_API_KEY", script)
+        self.assertIn("export ELSEVIER_API_KEY", script)
+        self.assertIn("[elsevier]", example)
+        self.assertIn("api_key_env = ELSEVIER_API_KEY", example)
+        self.assertNotIn("api_key =", example)
+
     def test_installer_tries_public_archive_before_private_token_fallback(self):
         script = (ROOT / "scripts" / "install-nas.sh").read_text(encoding="utf-8")
 

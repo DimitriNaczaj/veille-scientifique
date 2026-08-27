@@ -2,6 +2,7 @@ import json
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from . import __version__
 from .mail_diagnostics import create_tls_context
 from .models import AIAnalysis, PublicationPriority
 
@@ -104,7 +105,7 @@ class OpenAIAnalyzer:
                 "Authorization": "Bearer " + self.api_key,
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "User-Agent": "veille-scientifique/0.6.2",
+                "User-Agent": "veille-scientifique/{}".format(__version__),
             },
             method="POST",
         )

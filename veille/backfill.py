@@ -13,6 +13,7 @@ from .atomic import atomic_open
 from .crossref import CrossrefClient
 from .delivery import SMTPDigestSender
 from .digest import write_digest
+from .elsevier import elsevier_client_from_config, pii_from_sciencedirect_url
 from .filtering import BehavioralScienceFilter
 from .mail_diagnostics import _load_config
 from .mbox_import import _validate_distinct_paths
@@ -213,6 +214,15 @@ def _with_metadata(publication, metadata):
     )
 
 
+def _should_retry_legacy_elsevier(publication, cached_status, enabled):
+    return (
+        enabled
+        and cached_status == "not_found"
+        and bool(publication.url)
+        and pii_from_sciencedirect_url(publication.url) is not None
+    )
+
+
 def _enrich_backfill(database, config_path, limit, http_opener, candidates):
     if limit < 0 or limit > 1000:
         raise ValueError("La limite d’enrichissement doit être comprise entre 0 et 1 000.")
@@ -222,9 +232,11 @@ def _enrich_backfill(database, config_path, limit, http_opener, candidates):
     contact_email = config.get("app", "crossref_email", fallback="").strip()
     if not contact_email:
         contact_email = config.get("imap", "username", fallback="").strip() or None
+    elsevier_client = elsevier_client_from_config(config, opener=http_opener)
     provider = MetadataCascade(
         CrossrefClient(contact_email=contact_email, opener=http_opener),
         PublisherPageClient(opener=http_opener),
+        elsevier_client=elsevier_client,
     )
     store = Store(database)
     enriched = 0
@@ -238,18 +250,37 @@ def _enrich_backfill(database, config_path, limit, http_opener, candidates):
                 break
             if not (publication.doi or publication.url):
                 continue
-            if store.metadata_status(publication.identity) is not None:
+            cached_status = store.metadata_status(publication.identity)
+            retry_legacy_elsevier = _should_retry_legacy_elsevier(
+                publication,
+                cached_status,
+                elsevier_client is not None,
+            )
+            if cached_status is not None and not retry_legacy_elsevier:
                 continue
             attempted += 1
             reference = publication.doi or publication.url
             try:
                 metadata = (
-                    provider.fetch_by_doi(publication.doi)
+                    provider.fetch_by_doi(
+                        publication.doi,
+                        source_url=publication.url,
+                    )
                     if publication.doi is not None
                     else provider.fetch_by_url(publication.url)
                 )
                 if metadata is None:
-                    store.save_metadata_not_found(publication.identity)
+                    status = (
+                        "elsevier_not_found"
+                        if elsevier_client is not None
+                        and publication.url
+                        and pii_from_sciencedirect_url(publication.url) is not None
+                        else "not_found"
+                    )
+                    store.save_metadata_not_found(
+                        publication.identity,
+                        status=status,
+                    )
                 else:
                     store.save_metadata(publication.identity, metadata)
                     metadata_updates[publication.identity] = metadata
@@ -343,12 +374,27 @@ def build_backfill_plan(
     )
     store = Store(database)
     try:
-        metadata_identities = store.backfill_metadata_identities()
+        metadata_statuses = store.backfill_metadata_statuses()
     finally:
         store.close()
+    retry_legacy_elsevier = False
+    if config_path:
+        retry_legacy_elsevier = elsevier_client_from_config(
+            _load_config(config_path),
+            opener=http_opener,
+        ) is not None
     enrichment_pending = sum(
-        publication.identity not in metadata_identities
-        and bool(publication.doi or publication.url)
+        bool(publication.doi or publication.url)
+        and (
+            publication.identity not in metadata_statuses
+            or (
+                _should_retry_legacy_elsevier(
+                    publication,
+                    metadata_statuses.get(publication.identity),
+                    retry_legacy_elsevier,
+                )
+            )
+        )
         for publication in candidates
     )
     sample = _candidate_sample(candidates, sample_size)

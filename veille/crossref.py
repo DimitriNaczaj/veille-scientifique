@@ -4,6 +4,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
+from . import __version__
 from .models import WorkMetadata
 
 
@@ -84,7 +85,10 @@ class CrossrefClient:
         url = self.BASE_URL + quote(doi, safe="")
         if self.contact_email:
             url += "?" + urlencode({"mailto": self.contact_email})
-        agent = "veille-scientifique/0.6.2 (+https://github.com/DimitriNaczaj/veille-scientifique)"
+        agent = (
+            "veille-scientifique/{} "
+            "(+https://github.com/DimitriNaczaj/veille-scientifique)"
+        ).format(__version__)
         if self.contact_email:
             agent += " mailto:{}".format(self.contact_email)
         request = Request(url, headers={"Accept": "application/json", "User-Agent": agent})

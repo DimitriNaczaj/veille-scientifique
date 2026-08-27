@@ -37,6 +37,10 @@ enabled = true
 model = gpt-5.6-luna
 api_key_env = OPENAI_API_KEY
 
+[elsevier]
+# La valeur reste dans secrets.env ; seule cette variable est nommée ici.
+api_key_env = ELSEVIER_API_KEY
+
 [backfill]
 # La préparation et l’enrichissement sans IA restent possibles quand enabled = false.
 # Ne passer à true qu’après contrôle du plan et choix du budget total de campagne.

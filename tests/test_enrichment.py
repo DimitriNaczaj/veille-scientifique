@@ -7,6 +7,7 @@ from pathlib import Path
 
 from tests.test_pipeline import write_email
 from veille.crossref import CrossrefClient
+from veille.elsevier import ElsevierClient
 from veille.filtering import BehavioralScienceFilter
 from veille.publisher_pages import MetadataCascade, PublisherPageClient
 from veille.__main__ import main
@@ -109,6 +110,164 @@ class StubHTMLResponse:
 
 
 class CrossrefClientTests(unittest.TestCase):
+    def test_doi_fallback_preserves_source_sciencedirect_pii(self):
+        class CrossrefWithoutAbstract:
+            def fetch_by_doi(self, doi):
+                return WorkMetadata(
+                    title="Behavioral choices",
+                    abstract=None,
+                    journal="Journal of Behavioral Research",
+                    published_date="2026-08-26",
+                    authors=(),
+                    url="https://doi.org/" + doi,
+                )
+
+        pii_calls = []
+
+        class ElsevierWithAbstract:
+            def fetch_by_pii(self, pii):
+                pii_calls.append(pii)
+                return WorkMetadata(
+                    title="Behavioral choices",
+                    abstract="A large experiment tests behavioral choices.",
+                    journal="Journal of Behavioral Research",
+                    published_date="2026-08-26",
+                    authors=(),
+                    url="https://doi.org/10.1016/j.jbr.2026.100001",
+                )
+
+        class PublisherMustNotBeCalled:
+            def fetch_by_url(self, url):
+                raise AssertionError("Le repli HTML ne doit pas être appelé.")
+
+        provider = MetadataCascade(
+            CrossrefWithoutAbstract(),
+            PublisherMustNotBeCalled(),
+            elsevier_client=ElsevierWithAbstract(),
+        )
+
+        metadata = provider.fetch_by_doi(
+            "10.1016/j.jbr.2026.100001",
+            source_url=(
+                "https://www.sciencedirect.com/science/article/pii/"
+                "S0167487026000413"
+            ),
+        )
+
+        self.assertEqual(
+            metadata.abstract,
+            "A large experiment tests behavioral choices.",
+        )
+        self.assertEqual(pii_calls, ["S0167487026000413"])
+
+    def test_elsevier_metadata_without_abstract_falls_back_to_html(self):
+        class ElsevierWithoutAbstract:
+            def fetch_by_pii(self, pii):
+                return WorkMetadata(
+                    title="Behavioral choices from Elsevier",
+                    abstract=None,
+                    journal="Journal of Behavioral Research",
+                    published_date="2026-08-26",
+                    authors=("Martin, A.",),
+                    url="https://doi.org/10.1016/j.jbr.2026.100001",
+                )
+
+        publisher_calls = []
+
+        class PublisherWithAbstract:
+            def fetch_by_url(self, url):
+                publisher_calls.append(url)
+                return WorkMetadata(
+                    title=None,
+                    abstract="A field experiment tests behavioral choices.",
+                    journal=None,
+                    published_date=None,
+                    authors=(),
+                    url=url,
+                )
+
+        source_url = (
+            "https://www.sciencedirect.com/science/article/pii/"
+            "S0167487026000413"
+        )
+        provider = MetadataCascade(
+            None,
+            PublisherWithAbstract(),
+            elsevier_client=ElsevierWithoutAbstract(),
+        )
+
+        metadata = provider.fetch_by_url(source_url)
+
+        self.assertEqual(
+            metadata.abstract,
+            "A field experiment tests behavioral choices.",
+        )
+        self.assertEqual(metadata.title, "Behavioral choices from Elsevier")
+        self.assertEqual(publisher_calls, [source_url])
+
+    def test_sciencedirect_url_uses_elsevier_pii_api_for_abstract(self):
+        requests = []
+
+        def open_request(request, timeout):
+            requests.append((request, timeout))
+            return StubResponse(
+                {
+                    "abstracts-retrieval-response": {
+                        "coredata": {
+                            "dc:title": "Self-efficacy boosts recycling interventions",
+                            "dc:description": (
+                                "A meta-analysis tests the effectiveness of "
+                                "self-efficacy interventions."
+                            ),
+                            "prism:publicationName": "Journal of Economic Psychology",
+                            "prism:coverDate": "2026-08-26",
+                            "prism:doi": "10.1016/j.joep.2026.102999",
+                        },
+                        "authors": {
+                            "author": [
+                                {"ce:indexed-name": "Martin, A."},
+                                {"ce:indexed-name": "Bernard, L."},
+                            ]
+                        },
+                    }
+                }
+            )
+
+        class PublisherMustNotBeCalled:
+            def fetch_by_url(self, url):
+                raise AssertionError("La page HTML ne doit pas être appelée.")
+
+        provider = MetadataCascade(
+            None,
+            PublisherMustNotBeCalled(),
+            elsevier_client=ElsevierClient(
+                api_key="elsevier-secret",
+                opener=open_request,
+                timeout=7,
+            ),
+        )
+
+        metadata = provider.fetch_by_url(
+            "https://www.sciencedirect.com/science?_ob=GatewayURL&"
+            "_method=citationSearch&_piikey=S0167487026000413"
+        )
+
+        self.assertEqual(
+            metadata.abstract,
+            "A meta-analysis tests the effectiveness of self-efficacy interventions.",
+        )
+        self.assertEqual(metadata.authors, ("Martin, A.", "Bernard, L."))
+        self.assertEqual(len(requests), 1)
+        request, timeout = requests[0]
+        self.assertEqual(
+            request.full_url,
+            "https://api.elsevier.com/content/abstract/pii/"
+            "S0167487026000413?view=META_ABS",
+        )
+        self.assertEqual(request.get_header("X-els-apikey"), "elsevier-secret")
+        self.assertNotIn("elsevier-secret", request.full_url)
+        self.assertEqual(timeout, 7)
+
     def test_retrieves_and_normalizes_crossref_work(self):
         requests = []
 
@@ -236,6 +395,69 @@ class CrossrefClientTests(unittest.TestCase):
 
 
 class EnrichmentPipelineTests(unittest.TestCase):
+    def test_pipeline_keeps_sciencedirect_pii_when_publication_has_a_doi(self):
+        pii_calls = []
+
+        class CrossrefWithoutAbstract:
+            def fetch_by_doi(self, doi):
+                return WorkMetadata(
+                    title="Behavioral choices in household energy use",
+                    abstract=None,
+                    journal="Journal of Behavioral Research",
+                    published_date="2026-08-26",
+                    authors=(),
+                    url="https://doi.org/" + doi,
+                )
+
+        class ElsevierWithAbstract:
+            def fetch_by_pii(self, pii):
+                pii_calls.append(pii)
+                return WorkMetadata(
+                    title="Behavioral choices in household energy use",
+                    abstract="A large experiment tests household choices.",
+                    journal="Journal of Behavioral Research",
+                    published_date="2026-08-26",
+                    authors=(),
+                    url="https://doi.org/10.1016/j.jbr.2026.100001",
+                )
+
+        class PublisherMustNotBeCalled:
+            def fetch_by_url(self, url):
+                raise AssertionError("Le repli HTML ne doit pas être appelé.")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "inbox"
+            inbox.mkdir()
+            source_url = (
+                "https://www.sciencedirect.com/science/article/pii/"
+                "S0167487026000413"
+            )
+            write_email(
+                inbox / "newsletter.eml",
+                "<elsevier-doi@example.org>",
+                "Nouvelles publications",
+                markup=(
+                    '<a href="{url}">Behavioral choices in household energy use</a>'
+                    '<a href="{url}">DOI: 10.1016/j.jbr.2026.100001</a>'
+                ).format(url=source_url),
+            )
+
+            report = run_pipeline(
+                inbox,
+                root / "veille.sqlite",
+                root / "digest.html",
+                metadata_provider=MetadataCascade(
+                    CrossrefWithoutAbstract(),
+                    PublisherMustNotBeCalled(),
+                    elsevier_client=ElsevierWithAbstract(),
+                ),
+                relevance_filter=BehavioralScienceFilter(),
+            )
+
+            self.assertEqual(report.publications_enriched, 1)
+            self.assertEqual(pii_calls, ["S0167487026000413"])
+
     def test_retries_publisher_after_crossref_not_found_without_repeating_crossref(self):
         crossref_calls = []
         publisher_calls = []

@@ -22,7 +22,11 @@ from .reporting import (
     format_daily_error,
     format_daily_report,
 )
-from .secret_migration import migrate_inline_mail_password, set_openai_api_key
+from .secret_migration import (
+    migrate_inline_mail_password,
+    set_elsevier_api_key,
+    set_openai_api_key,
+)
 
 
 def build_parser():
@@ -122,6 +126,13 @@ def build_parser():
         help="Enregistrer une clé OpenAI par saisie masquée et validée",
     )
     set_openai_key.add_argument(
+        "--secrets", required=True, help="Chemin du fichier secrets.env"
+    )
+    set_elsevier_key = subparsers.add_parser(
+        "set-elsevier-key",
+        help="Enregistrer une clé Elsevier par saisie masquée et validée",
+    )
+    set_elsevier_key.add_argument(
         "--secrets", required=True, help="Chemin du fichier secrets.env"
     )
     daily = subparsers.add_parser(
@@ -264,6 +275,8 @@ def main(
             report = migrate_inline_mail_password(args.config, args.secrets)
         elif args.command == "set-openai-key":
             report = set_openai_api_key(args.secrets)
+        elif args.command == "set-elsevier-key":
+            report = set_elsevier_api_key(args.secrets)
         elif args.command == "import-mbox":
             report = run_mbox_import(
                 args.source, args.database, args.catalog, args.report

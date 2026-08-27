@@ -579,6 +579,16 @@ class Store:
             ).fetchall()
         }
 
+    def backfill_metadata_statuses(self):
+        return dict(
+            self.connection.execute(
+                "SELECT pm.publication_identity, pm.status "
+                "FROM publication_metadata pm "
+                "JOIN publications p ON p.identity = pm.publication_identity "
+                "WHERE p.delivery_eligible = 0 AND p.delivered_at IS NULL"
+            ).fetchall()
+        )
+
     def load_metadata(self, identity):
         row = self.connection.execute(
             "SELECT title, abstract, journal, published_date, authors_json, url "
@@ -649,7 +659,11 @@ class Store:
             )
 
     def save_metadata_not_found(self, identity, status="not_found"):
-        if status not in ("not_found", "crossref_not_found"):
+        if status not in (
+            "not_found",
+            "crossref_not_found",
+            "elsevier_not_found",
+        ):
             raise ValueError("Statut de métadonnées introuvables invalide.")
         with self.connection:
             self.connection.execute(

@@ -4,6 +4,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
 
+from . import __version__
+from .elsevier import pii_from_sciencedirect_url
 from .mail_diagnostics import create_tls_context
 from .models import WorkMetadata
 
@@ -118,9 +120,9 @@ class PublisherPageClient:
             headers={
                 "Accept": "text/html,application/xhtml+xml",
                 "User-Agent": (
-                    "veille-scientifique/0.6.2 "
+                    "veille-scientifique/{} "
                     "(+https://github.com/DimitriNaczaj/veille-scientifique)"
-                ),
+                ).format(__version__),
             },
         )
         try:
@@ -187,15 +189,20 @@ def _merge_metadata(primary, secondary):
 
 
 class MetadataCascade:
-    def __init__(self, crossref_client, publisher_client):
+    def __init__(self, crossref_client, publisher_client, elsevier_client=None):
         self.crossref_client = crossref_client
         self.publisher_client = publisher_client
+        self.elsevier_client = elsevier_client
 
-    def fetch_by_doi(self, doi):
+    def fetch_by_doi(self, doi, source_url=None):
         primary = self.fetch_primary_by_doi(doi)
         if primary is not None and primary.abstract:
             return primary
-        return self.fetch_publisher_fallback(doi, primary)
+        return self.fetch_publisher_fallback(
+            doi,
+            primary,
+            source_url=source_url,
+        )
 
     def fetch_primary_by_doi(self, doi):
         return (
@@ -204,14 +211,23 @@ class MetadataCascade:
             else None
         )
 
-    def fetch_publisher_fallback(self, doi, primary=None):
+    def fetch_publisher_fallback(self, doi, primary=None, source_url=None):
         url = (
-            primary.url
+            source_url
+            if source_url and pii_from_sciencedirect_url(source_url)
+            else primary.url
             if primary is not None and primary.url
             else "https://doi.org/" + quote(doi, safe="/")
         )
-        secondary = self.publisher_client.fetch_by_url(url)
+        secondary = self.fetch_by_url(url)
         return _merge_metadata(primary, secondary)
 
     def fetch_by_url(self, url):
-        return self.publisher_client.fetch_by_url(url)
+        primary = None
+        pii = pii_from_sciencedirect_url(url)
+        if pii and self.elsevier_client is not None:
+            primary = self.elsevier_client.fetch_by_pii(pii)
+            if primary is not None and primary.abstract:
+                return primary
+        secondary = self.publisher_client.fetch_by_url(url)
+        return _merge_metadata(primary, secondary)

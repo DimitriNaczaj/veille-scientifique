@@ -10,13 +10,44 @@ from pathlib import Path
 from unittest.mock import patch
 
 from veille.__main__ import main
-from veille.secret_migration import set_openai_api_key
+from veille.secret_migration import set_elsevier_api_key, set_openai_api_key
 
 
 _EXECUTABLE_TEMP_ROOT = Path(__file__).parents[1]
 
 
 class SecretMigrationTests(unittest.TestCase):
+    def test_elsevier_key_setter_is_masked_and_preserves_other_secrets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            secrets = Path(directory) / "secrets.env"
+            secrets.write_text(
+                "SCIENCE_DIGEST_MAIL_PASSWORD=mail-key\n"
+                "ELSEVIER_API_KEY=old-key\n",
+                encoding="utf-8",
+            )
+            api_key = "elsevier-" + "C" * 32
+            stdout = io.StringIO()
+
+            with patch(
+                "veille.secret_migration.getpass.getpass",
+                return_value=api_key,
+            ), redirect_stdout(stdout):
+                exit_code = main(
+                    ["set-elsevier-key", "--secrets", str(secrets)]
+                )
+
+            self.assertEqual(exit_code, 0)
+            content = secrets.read_text(encoding="utf-8")
+            self.assertEqual(content.count("ELSEVIER_API_KEY="), 1)
+            self.assertIn("SCIENCE_DIGEST_MAIL_PASSWORD=mail-key\n", content)
+            self.assertIn(
+                "ELSEVIER_API_KEY={}\n".format(shlex.quote(api_key)),
+                content,
+            )
+            self.assertNotIn("old-key", content)
+            self.assertNotIn(api_key, stdout.getvalue())
+            self.assertEqual(os.stat(secrets).st_mode & 0o777, 0o600)
+
     def test_openai_key_setter_replaces_all_old_values_without_exposing_key(self):
         with tempfile.TemporaryDirectory() as directory:
             secrets = Path(directory) / "secrets.env"
@@ -167,6 +198,7 @@ password = {}
             )
             (root / "secrets.env").write_text(
                 "OPENAI_API_KEY=combined-key\n"
+                "ELSEVIER_API_KEY=elsevier-key\n"
                 "SCIENCE_DIGEST_MAIL_PASSWORD=mail-key\n"
                 "SCIENCE_DIGEST_SMTP_PASSWORD=smtp-key\n",
                 encoding="utf-8",
@@ -188,6 +220,7 @@ exec() {
     printf '%s\n' "$OPENAI_API_KEY" > "$VEILLE_TEST_OUTPUT"
     printf '%s\n' "$SCIENCE_DIGEST_MAIL_PASSWORD" >> "$VEILLE_TEST_OUTPUT"
     printf '%s\n' "$SCIENCE_DIGEST_SMTP_PASSWORD" >> "$VEILLE_TEST_OUTPUT"
+    printenv ELSEVIER_API_KEY >> "$VEILLE_TEST_OUTPUT"
 }
 source "$1"
 """
@@ -202,7 +235,7 @@ source "$1"
 
             self.assertEqual(
                 output.read_text(encoding="utf-8"),
-                "combined-key\nmail-key\nsmtp-key\n",
+                "combined-key\nmail-key\nsmtp-key\nelsevier-key\n",
             )
 
     def test_daily_launcher_detects_python_when_not_explicitly_configured(self):

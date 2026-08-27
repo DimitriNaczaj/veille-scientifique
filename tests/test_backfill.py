@@ -2,6 +2,7 @@ import csv
 import hashlib
 import io
 import json
+import os
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -59,6 +60,118 @@ api_key_env = OPENAI_API_KEY
 
 
 class BackfillPlanCommandTests(unittest.TestCase):
+    def test_plan_retries_legacy_elsevier_not_found_with_api_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "veille.sqlite"
+            output = root / "plan.json"
+            config = root / "veille.ini"
+            write_config(config)
+            with config.open("a", encoding="utf-8") as stream:
+                stream.write(
+                    "\n[elsevier]\napi_key_env = ELSEVIER_API_KEY\n"
+                )
+            store = Store(database)
+            try:
+                identity = "title:elsevier-recycling"
+                store.add_message(
+                    ParsedMessage(
+                        identity="message:elsevier",
+                        subject="Ancienne newsletter Elsevier",
+                        sender="sciencedirect@example.org",
+                        publications=(
+                            PublicationCandidate(
+                                identity=identity,
+                                doi=None,
+                                title=(
+                                    "Self-efficacy boosts recycling "
+                                    "interventions"
+                                ),
+                                url=(
+                                    "https://www.sciencedirect.com/science?"
+                                    "_ob=GatewayURL&_piikey=S0167487026000413"
+                                ),
+                            ),
+                            PublicationCandidate(
+                                identity="title:elsevier-collective-action",
+                                doi=None,
+                                title=(
+                                    "Social norms motivate collective action"
+                                ),
+                                url=(
+                                    "https://www.sciencedirect.com/science?"
+                                    "_ob=GatewayURL&_piikey=S027249442600280X"
+                                ),
+                            ),
+                        ),
+                    ),
+                    root / "archive.mbox#1",
+                    delivery_eligible=False,
+                )
+                store.save_metadata_not_found(identity)
+                store.save_metadata_not_found(
+                    "title:elsevier-collective-action"
+                )
+            finally:
+                store.close()
+
+            requests = []
+
+            def open_request(request, timeout=None, context=None):
+                requests.append(request)
+                return StubResponse(
+                    {
+                        "abstracts-retrieval-response": {
+                            "coredata": {
+                                "dc:title": (
+                                    "Self-efficacy boosts recycling "
+                                    "interventions"
+                                ),
+                                "dc:description": (
+                                    "A meta-analysis tests behavioral "
+                                    "recycling interventions."
+                                ),
+                                "prism:publicationName": (
+                                    "Journal of Economic Psychology"
+                                ),
+                            },
+                            "authors": {"author": []},
+                        }
+                    }
+                )
+
+            with patch.dict(
+                os.environ,
+                {"ELSEVIER_API_KEY": "elsevier-secret"},
+            ), redirect_stdout(io.StringIO()):
+                exit_code = main(
+                    [
+                        "backfill-plan",
+                        "--config",
+                        str(config),
+                        "--database",
+                        str(database),
+                        "--output",
+                        str(output),
+                        "--enrichment-limit",
+                        "1",
+                    ],
+                    http_opener=open_request,
+                )
+
+            self.assertEqual(exit_code, 0)
+            plan = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(plan["abstracts_available"], 1)
+            self.assertEqual(plan["publications_enriched"], 1)
+            self.assertEqual(plan["enrichment_pending"], 1)
+            self.assertFalse(plan["ready_for_ai"])
+            self.assertEqual(len(requests), 1)
+            self.assertEqual(
+                requests[0].get_header("X-els-apikey"),
+                "elsevier-secret",
+            )
+            self.assertNotIn("elsevier-secret", requests[0].full_url)
+
     def test_daily_backfill_report_is_readable_and_explicitly_says_no_ai(self):
         output = format_backfill_daily(
             {

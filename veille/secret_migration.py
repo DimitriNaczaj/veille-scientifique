@@ -47,6 +47,22 @@ class OpenAIKeyUpdateReport:
         }
 
 
+@dataclass(frozen=True)
+class ElsevierKeyUpdateReport:
+    secrets: str
+    updated: bool = True
+    errors: tuple = ()
+
+    def as_dict(self):
+        return {
+            "service": "elsevier-key-setup",
+            "status": "ok",
+            "secrets": self.secrets,
+            "updated": self.updated,
+            "errors": [],
+        }
+
+
 def _atomic_write(path, content):
     path = Path(path)
     with atomic_open(
@@ -112,6 +128,21 @@ def _valid_openai_api_key(value):
     )
 
 
+def _replace_environment_secret(secrets_path, environment_name, value):
+    secrets_path = Path(secrets_path)
+    content = secrets_path.read_text(encoding="utf-8") if secrets_path.exists() else ""
+    assignment = re.compile(
+        r"^\s*{}=".format(re.escape(environment_name))
+    )
+    retained = [
+        line
+        for line in content.splitlines()
+        if not assignment.match(line)
+    ]
+    retained.append("{}={}".format(environment_name, shlex.quote(value)))
+    _atomic_write(secrets_path, "\n".join(retained) + "\n")
+
+
 def set_openai_api_key(secrets_path, reader=None):
     secrets_path = Path(secrets_path)
     read_secret = reader or getpass.getpass
@@ -120,15 +151,24 @@ def set_openai_api_key(secrets_path, reader=None):
         raise ValueError(
             "Clé OpenAI invalide : une seule ligne commençant par sk- est attendue."
         )
-    content = secrets_path.read_text(encoding="utf-8") if secrets_path.exists() else ""
-    retained = [
-        line
-        for line in content.splitlines()
-        if not re.match(r"^\s*OPENAI_API_KEY=", line)
-    ]
-    retained.append("OPENAI_API_KEY={}".format(shlex.quote(api_key)))
-    _atomic_write(secrets_path, "\n".join(retained) + "\n")
+    _replace_environment_secret(secrets_path, "OPENAI_API_KEY", api_key)
     return OpenAIKeyUpdateReport(secrets=str(secrets_path))
+
+
+def set_elsevier_api_key(secrets_path, reader=None):
+    secrets_path = Path(secrets_path)
+    read_secret = reader or getpass.getpass
+    api_key = read_secret("Collez la clé API Elsevier : ")
+    if not (
+        len(api_key) >= 16
+        and all(33 <= ord(character) <= 126 for character in api_key)
+    ):
+        raise ValueError(
+            "Clé Elsevier invalide : une seule ligne d’au moins 16 caractères "
+            "est attendue."
+        )
+    _replace_environment_secret(secrets_path, "ELSEVIER_API_KEY", api_key)
+    return ElsevierKeyUpdateReport(secrets=str(secrets_path))
 
 
 def migrate_inline_mail_password(config_path, secrets_path):

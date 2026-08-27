@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from .ai import OpenAIAnalyzer
 from .crossref import CrossrefClient
 from .delivery import SMTPDigestSender
+from .elsevier import elsevier_client_from_config
 from .filtering import BehavioralScienceFilter
 from .imap_sync import run_imap_sync
 from .mail_diagnostics import _load_config, load_imap_settings
@@ -101,6 +102,10 @@ def run_daily(
     metadata_provider = MetadataCascade(
         CrossrefClient(contact_email=contact_email, opener=http_opener),
         PublisherPageClient(opener=http_opener),
+        elsevier_client=elsevier_client_from_config(
+            config,
+            opener=http_opener,
+        ),
     )
 
     warnings = []
