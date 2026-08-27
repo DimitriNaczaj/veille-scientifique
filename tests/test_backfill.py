@@ -943,6 +943,9 @@ class BackfillPlanCommandTests(unittest.TestCase):
             result = {
                 "relevant": True,
                 "priority": "high",
+                "interest_score": 92,
+                "evidence_quality": "strong",
+                "classification_reason": "Preuve robuste et directement utile.",
                 "summary_fr": "Une intervention robuste réduit la consommation.",
                 "bellegarde_value": "Résultat directement mobilisable.",
                 "applications": ["Concevoir un message normatif"],
@@ -1081,6 +1084,9 @@ class BackfillPlanCommandTests(unittest.TestCase):
                                             {
                                                 "relevant": False,
                                                 "priority": "excluded",
+                                                "interest_score": 12,
+                                                "evidence_quality": "weak",
+                                                "classification_reason": "Preuve trop faible.",
                                                 "summary_fr": "Écartée.",
                                                 "bellegarde_value": "",
                                                 "applications": [],
@@ -1303,6 +1309,9 @@ class BackfillPlanCommandTests(unittest.TestCase):
             result = {
                 "relevant": False,
                 "priority": "excluded",
+                "interest_score": 12,
+                "evidence_quality": "weak",
+                "classification_reason": "Preuve trop faible.",
                 "summary_fr": "Écartée.",
                 "bellegarde_value": "",
                 "applications": [],

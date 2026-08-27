@@ -16,7 +16,7 @@ if [ -z "${PYTHON_BIN:-}" ]; then
         /var/packages/py3k/target/usr/local/bin/python3; do
         if [ -n "$candidate" ] && [ -x "$candidate" ] && \
             "$candidate" -c \
-                'import imaplib, json, sqlite3, ssl, smtplib, sys; raise SystemExit(0 if sys.version_info >= (3, 8) else 1)' \
+                'import json, sqlite3, ssl, sys; raise SystemExit(0 if sys.version_info >= (3, 8) else 1)' \
                 >/dev/null 2>&1; then
             PYTHON_BIN=$candidate
             break
@@ -38,11 +38,8 @@ if [ -f "$SECRETS_ENV" ]; then
     . "$SECRETS_ENV"
 fi
 
-[ "${SCIENCE_DIGEST_MAIL_PASSWORD+x}" = x ] && export SCIENCE_DIGEST_MAIL_PASSWORD
-[ "${SCIENCE_DIGEST_SMTP_PASSWORD+x}" = x ] && export SCIENCE_DIGEST_SMTP_PASSWORD
 [ "${OPENAI_API_KEY+x}" = x ] && export OPENAI_API_KEY
-[ "${ELSEVIER_API_KEY+x}" = x ] && export ELSEVIER_API_KEY
 
-exec "$PYTHON_BIN" -m veille backfill-dispatch \
+exec "$PYTHON_BIN" -m veille backfill-classify \
     --config "$CONFIG_PATH" \
     --format human

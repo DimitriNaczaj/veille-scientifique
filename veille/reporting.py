@@ -39,6 +39,69 @@ def format_refresh_report(report):
     return "\n".join(lines)
 
 
+def format_backfill_classification(report):
+    row = _backfill_row
+    lines = [
+        "RATTRAPAGE – CLASSEMENT",
+        "=======================",
+        row("Statut", str(report.get("status") or "inconnu").upper()),
+        row("Analysés dans ce lot", report.get("publications_classified") or 0),
+        row("Restant à classer", report.get("classification_pending") or 0),
+        row(
+            "Réservations à vérifier",
+            report.get("unresolved_reservations") or 0,
+        ),
+        row("Prêts pour le digest", report.get("digest_ready") or 0),
+        row(
+            "Sans abstract, retenus à part",
+            report.get("withheld_without_abstract") or 0,
+        ),
+        row("Écartés par l’IA", report.get("publications_excluded") or 0),
+        row("Fichier de contrôle", report.get("classification_output") or "absent"),
+        row("Sauvegarde SQLite", report.get("classification_backup") or "existante"),
+        row(
+            "Coût cumulé maximal",
+            "{:.6f} $US".format(
+                report.get("campaign_cost_upper_bound_usd") or 0
+            ),
+        ),
+    ]
+    lines.append("")
+    _message_summary(
+        lines,
+        "Avertissements",
+        _unique_messages(report.get("warnings")),
+        "aucun",
+    )
+    return "\n".join(str(line) for line in lines)
+
+
+def format_backfill_dispatch(report):
+    row = _backfill_row
+    lines = [
+        "RATTRAPAGE – DIGEST QUOTIDIEN",
+        "=============================",
+        row("Statut", str(report.get("status") or "inconnu").upper()),
+        row("Articles sélectionnés", report.get("publications_selected") or 0),
+        row("Articles envoyés", report.get("publications_delivered") or 0),
+        row("Restant dans la file", report.get("digest_remaining") or 0),
+        row(
+            "Sans abstract, retenus à part",
+            report.get("withheld_without_abstract") or 0,
+        ),
+        row("Newsletter envoyée", "oui" if report.get("email_sent") else "non"),
+        row("Fichier de contrôle", report.get("classification_output") or "absent"),
+    ]
+    lines.append("")
+    _message_summary(
+        lines,
+        "Avertissements",
+        _unique_messages(report.get("warnings")),
+        "aucun",
+    )
+    return "\n".join(str(line) for line in lines)
+
+
 def format_daily_error(error):
     detail = str(error).strip() or "Erreur inconnue"
     return "\n".join(

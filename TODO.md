@@ -3,6 +3,15 @@
 - [ ] Ajouter à chaque article un bouton « Ajouter à Zotero ».
 - [ ] Ajouter, pour chaque auteur, un lien vers sa recherche Google Scholar.
 
+## Livré en version 0.11.0
+
+- [x] Séparer le classement IA unique de la distribution quotidienne.
+- [x] Classer les candidats avec un score d’intérêt, une qualité des preuves et une raison.
+- [x] Exporter le capital de connaissances du rattrapage dans un CSV contrôlable.
+- [x] Retenir hors du digest les articles dépourvus d’abstract.
+- [x] Reprendre un classement interrompu sans analyser deux fois le même article.
+- [x] Envoyer chaque jour dix articles déjà classés, sans nouvel appel IA.
+
 ## Livré en version 0.10.0
 
 - [x] Réviser la consigne de tri IA (`bellegarde-v3`) après arbitrage humain.

@@ -371,3 +371,23 @@ suffisantes.
 
 Coût : 773 à 1 150 tokens d’entrée par article, soit environ 0,16 $US
 supplémentaires sur l’ensemble du rattrapage.
+
+## Séparation du classement et de la distribution (version 0.11.0)
+
+La consigne `bellegarde-v4` conserve les règles de décision de la version 3 et
+ajoute trois champs contrôlés : score d’intérêt, qualité des preuves et raison du
+classement. Les plages de score sont validées par le programme : 80–100 pour
+`high`, 40–79 pour `watch`, 0–39 pour `excluded`.
+
+Un article sans abstract ne peut pas recevoir `high`. Sa qualité doit être
+`unknown` et sa synthèse doit signaler que le classement repose sur le titre. Il
+est conservé dans le CSV mais exclu de la file de distribution.
+
+Tests automatisés sur Python 3.9 :
+
+- interruption après un article puis reprise sans second appel pour cet article ;
+- classement complet sans modification de `delivered_at` ;
+- refus de distribuer tant qu’un candidat reste sans classement ;
+- exclusion des articles sans abstract du digest quotidien ;
+- marquage comme distribué uniquement après succès SMTP ;
+- aperçu `--no-send` sans modification de la file.

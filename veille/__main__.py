@@ -11,6 +11,12 @@ from .backfill import (
     run_backfill_daily,
 )
 from .daily import run_daily
+from .campaign import (
+    campaign_settings,
+    classify_backfill,
+    dispatch_backfill,
+    export_backfill_classification,
+)
 from .filtering import BehavioralScienceFilter
 from .imap_sync import run_imap_sync
 from .mbox_import import run_mbox_import
@@ -19,6 +25,8 @@ from .pipeline import run_pipeline
 from .refresh import refresh_missing_abstracts
 from .reporting import (
     format_backfill_daily,
+    format_backfill_classification,
+    format_backfill_dispatch,
     format_backfill_plan,
     format_daily_error,
     format_refresh_report,
@@ -232,6 +240,46 @@ def build_parser():
         required=True,
         help="Confirmer après vérification OpenAI que l’appel n’a pas été facturé",
     )
+    backfill_classify = subparsers.add_parser(
+        "backfill-classify",
+        help="Classer une fois tout le rattrapage sans envoyer de courriel",
+    )
+    backfill_classify.add_argument("--config", required=True)
+    backfill_classify.add_argument(
+        "--batch-limit",
+        type=int,
+        help="Limiter ce passage ; 0 traite tout le reste",
+    )
+    backfill_classify.add_argument(
+        "--format",
+        dest="report_format",
+        choices=("json", "human"),
+        default="json",
+    )
+    backfill_export = subparsers.add_parser(
+        "backfill-export",
+        help="Régénérer le fichier CSV de classement sans appel IA",
+    )
+    backfill_export.add_argument("--config", required=True)
+    backfill_export.add_argument(
+        "--format",
+        dest="report_format",
+        choices=("json", "human"),
+        default="json",
+    )
+    backfill_dispatch = subparsers.add_parser(
+        "backfill-dispatch",
+        help="Envoyer le prochain digest à partir du classement terminé",
+    )
+    backfill_dispatch.add_argument("--config", required=True)
+    backfill_dispatch.add_argument("--article-limit", type=int)
+    backfill_dispatch.add_argument("--no-send", action="store_true")
+    backfill_dispatch.add_argument(
+        "--format",
+        dest="report_format",
+        choices=("json", "human"),
+        default="json",
+    )
     return parser
 
 
@@ -337,6 +385,59 @@ def main(
                 args.database,
                 args.reservation_id,
             )
+        elif args.command == "backfill-classify":
+            settings = campaign_settings(args.config)
+
+            def progress(done, total, publication, analysis):
+                if args.report_format == "human":
+                    print(
+                        "Classés {}/{} – {}".format(
+                            done,
+                            total,
+                            publication.title or publication.identity,
+                        ),
+                        file=sys.stderr,
+                        flush=True,
+                    )
+
+            report = classify_backfill(
+                args.config,
+                settings["database"],
+                settings["plan"],
+                settings["classification"],
+                settings["budget_usd"],
+                batch_limit=(
+                    settings["classification_batch_limit"]
+                    if args.batch_limit is None
+                    else args.batch_limit
+                ),
+                ai_opener=ai_opener,
+                progress=progress,
+            )
+        elif args.command == "backfill-export":
+            settings = campaign_settings(args.config)
+            report = export_backfill_classification(
+                settings["database"],
+                settings["plan"],
+                settings["classification"],
+                settings["model"],
+            )
+        elif args.command == "backfill-dispatch":
+            settings = campaign_settings(args.config)
+            report = dispatch_backfill(
+                args.config,
+                settings["database"],
+                settings["plan"],
+                settings["output"],
+                article_limit=(
+                    settings["daily_articles"]
+                    if args.article_limit is None
+                    else args.article_limit
+                ),
+                classification_output=settings["classification"],
+                no_send=args.no_send,
+                smtp_factory=smtp_factory,
+            )
         else:
             metadata_provider = None
             if not args.no_enrichment:
@@ -369,6 +470,10 @@ def main(
         print(format_backfill_daily(report_payload))
     elif args.command == "refresh-abstracts":
         print(format_refresh_report(report_payload))
+    elif args.command in ("backfill-classify", "backfill-export") and args.report_format == "human":
+        print(format_backfill_classification(report_payload))
+    elif args.command == "backfill-dispatch" and args.report_format == "human":
+        print(format_backfill_dispatch(report_payload))
     else:
         print(json.dumps(report_payload, ensure_ascii=False, sort_keys=True))
     return 1 if getattr(report, "errors", ()) else 0

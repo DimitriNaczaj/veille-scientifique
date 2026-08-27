@@ -331,6 +331,7 @@ cp -R "$SOURCE_DIR"/. "$INSTALL_ROOT"/
 chmod +x \
   "$INSTALL_ROOT/scripts/run-daily.sh" \
   "$INSTALL_ROOT/scripts/run-backfill.sh" \
+  "$INSTALL_ROOT/scripts/run-classify.sh" \
   "$INSTALL_ROOT/scripts/run-refresh.sh" \
   "$INSTALL_ROOT/scripts/install-nas.sh"
 touch "$INSTALL_ROOT/.veille-installation"
@@ -393,9 +394,11 @@ if [[ "$REUSE_CONFIG" == false ]]; then
     printf '%s\n' '[backfill]' 'enabled = false'
     printf 'plan = %s/out/rattrapage-plan.json\noutput = %s/out/rattrapage.html\n' \
       "$INSTALL_ROOT" "$INSTALL_ROOT"
+    printf 'classification = %s/out/rattrapage-classement.csv\n' "$INSTALL_ROOT"
     printf 'sample = %s/out/rattrapage-sample.csv\n' "$INSTALL_ROOT"
     printf '%s\n' 'sample_size = 100' 'profile = standard' 'enrichment_limit = 100' \
-      'article_limit = 15' 'budget_usd = 0'
+      'article_limit = 15' 'classification_batch_limit = 0' \
+      'daily_articles = 10' 'budget_usd = 0'
   } > "$CONFIG_TMP"
   chmod 600 "$CONFIG_TMP"
   mv "$CONFIG_TMP" "$CONFIG_PATH"
@@ -415,9 +418,11 @@ if ! grep -q '^\[backfill\]$' "$CONFIG_PATH"; then
     printf '\n%s\n' '[backfill]' 'enabled = false'
     printf 'plan = %s/out/rattrapage-plan.json\noutput = %s/out/rattrapage.html\n' \
       "$INSTALL_ROOT" "$INSTALL_ROOT"
+    printf 'classification = %s/out/rattrapage-classement.csv\n' "$INSTALL_ROOT"
     printf 'sample = %s/out/rattrapage-sample.csv\n' "$INSTALL_ROOT"
     printf '%s\n' 'sample_size = 100' 'profile = standard' 'enrichment_limit = 100' \
-      'article_limit = 15' 'budget_usd = 0'
+      'article_limit = 15' 'classification_batch_limit = 0' \
+      'daily_articles = 10' 'budget_usd = 0'
   } >> "$CONFIG_PATH"
   say "Section [backfill] ajoutée, désactivée et sans budget IA."
 fi
@@ -506,6 +511,10 @@ BACKFILL_TASK_COMMAND_FILE="$INSTALL_ROOT/DSM_BACKFILL_TASK_COMMAND.txt"
 printf "VEILLE_ROOT='%s' PYTHON_BIN='%s' '%s/scripts/run-backfill.sh'\n" \
   "$INSTALL_ROOT" "$PYTHON_BIN" "$INSTALL_ROOT" > "$BACKFILL_TASK_COMMAND_FILE"
 chmod 600 "$BACKFILL_TASK_COMMAND_FILE"
+CLASSIFY_COMMAND_FILE="$INSTALL_ROOT/CLASSIFY_COMMAND.txt"
+printf "VEILLE_ROOT='%s' PYTHON_BIN='%s' '%s/scripts/run-classify.sh'\n" \
+  "$INSTALL_ROOT" "$PYTHON_BIN" "$INSTALL_ROOT" > "$CLASSIFY_COMMAND_FILE"
+chmod 600 "$CLASSIFY_COMMAND_FILE"
 step "Après sécurisation des secrets, ouvrez DSM → Panneau de configuration → Planificateur de tâches."
 step "Créez une tâche définie par l’utilisateur et copiez la commande de $TASK_COMMAND_FILE."
 warn "N’activez pas encore cette tâche : nous sécuriserons d’abord le mot de passe et ajouterons les clés OpenAI et Elsevier."
@@ -516,3 +525,4 @@ note "Configuration privée : $CONFIG_PATH"
 note "Dernière recette : $SMOKE_ROOT"
 note "Commande DSM préparée : $TASK_COMMAND_FILE"
 note "Commande DSM de rattrapage préparée : $BACKFILL_TASK_COMMAND_FILE"
+note "Commande de classement préparée : $CLASSIFY_COMMAND_FILE"

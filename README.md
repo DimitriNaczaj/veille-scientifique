@@ -14,14 +14,15 @@ Application de veille scientifique autonome et légère pour Synology DS218.
 - cache d’enrichissement persistant et reprise après panne ;
 - préfiltrage explicable en sciences comportementales, avec exclusions prudentes
   des corrections, sommaires et usages manifestement non humains des mots-clés ;
-- classement en « Priorité élevée » et « À surveiller » ;
+- classement en « Pépites », « Éventuellement » et « Écarté » ;
 - second tri et résumés français structurés via l’API OpenAI, lorsque configurée ;
 - déduplication persistante avec SQLite ;
 - génération d’un digest HTML avec alternative texte et envoi SMTP ;
 - diagnostic IMAP en lecture seule et diagnostic SMTP avec envoi test optionnel ;
 - relance idempotente ;
 - séparation stricte entre le catalogue historique et la file quotidienne livrable ;
-- rattrapage contrôlé avec estimation sans IA, budget cumulé et digests limités ;
+- rattrapage contrôlé avec estimation sans IA, classement unique, export CSV et
+  distribution quotidienne limitée ;
 - aucune dépendance Python externe.
 
 Une référence sans DOI est conservée provisoirement à partir de son titre normalisé.
@@ -187,49 +188,85 @@ par million de tokens de sortie. Si la table de prix du programme change, un anc
 plan est refusé.
 
 Une fois le plan contrôlé, autoriser explicitement un budget total pour toute la
-campagne. Ce plafond est cumulatif entre les digests ; la consommation enregistrée
-dans SQLite est déduite avant chaque nouvel appel :
+campagne. Le classement et l’envoi sont ensuite séparés. Le classement analyse
+chaque candidat une seule fois, enregistre immédiatement le résultat dans SQLite
+et actualise un CSV lisible. Il peut être interrompu puis repris sans repayer les
+articles déjà traités :
 
 ```bash
-python3 -m veille backfill-run \
-  --config veille-scientifique.ini \
-  --database data/veille.sqlite \
-  --plan out/rattrapage-plan.json \
-  --output out/rattrapage.html \
-  --budget-usd 1.00 \
-  --article-limit 15
+bash scripts/run-classify.sh
 ```
 
-Le mail porte le préfixe `Rattrapage`. Après chaque digest, régénérer le plan pour
-le lot restant. `--no-send` est réservé à une base de recette : comme pour `daily`,
-les références traitées y sont marquées livrées.
+`classification_batch_limit = 0` traite tout le reste dans la même session. Une
+valeur de 50 ou 100 borne un passage ; relancer la même commande poursuit le
+classement. Une ligne de progression est affichée après chaque réponse IA. La
+première exécution conserve une copie de la base sous le nom
+`veille.sqlite.pre-classification.bak`.
+
+Le fichier `out/rattrapage-classement.csv` contient le rang, la catégorie, le score
+d’intérêt, la qualité des preuves, la raison du classement, le résumé et les
+applications. Les articles sans abstract sont analysés uniquement sur leur
+périmètre. Ils portent le statut `withheld_without_abstract` et ne sont jamais
+placés dans le digest quotidien.
+
+Une fois `Restant à classer  0` obtenu, prévisualiser le prochain digest sans
+envoyer ni modifier la file :
+
+```bash
+python3 -m veille backfill-dispatch \
+  --config veille-scientifique.ini \
+  --article-limit 10 \
+  --no-send \
+  --format human
+```
+
+`--no-send` n’inscrit aucune date de distribution. Après contrôle du HTML, la
+commande normale envoie les dix meilleurs articles restants puis les marque comme
+distribués uniquement si SMTP confirme l’envoi :
+
+```bash
+bash scripts/run-backfill.sh
+```
+
+Le mail porte le préfixe `Rattrapage`. Aucun nouvel appel IA n’est effectué pendant
+la distribution quotidienne. Le CSV peut être régénéré à tout moment, sans IA :
+
+```bash
+python3 -m veille backfill-export \
+  --config veille-scientifique.ini \
+  --format human
+```
 
 ### Automatiser le rattrapage sur le NAS
 
-Le wizard installe aussi `scripts/run-backfill.sh` et prépare
-`DSM_BACKFILL_TASK_COMMAND.txt`. Cette tâche doit rester distincte de la veille
-quotidienne. Avec la configuration installée par défaut, elle enrichit jusqu’à 100
-publications par passage et actualise le plan, sans IA et sans envoi :
+Le wizard installe `scripts/run-classify.sh` et `scripts/run-backfill.sh`. Il
+prépare `CLASSIFY_COMMAND.txt` pour le classement ponctuel et
+`DSM_BACKFILL_TASK_COMMAND.txt` pour la distribution quotidienne. Cette dernière
+tâche doit rester distincte de la veille quotidienne :
 
 ```ini
 [backfill]
 enabled = false
 plan = /volume1/Bellegarde/veille-scientifique/out/rattrapage-plan.json
 output = /volume1/Bellegarde/veille-scientifique/out/rattrapage.html
+classification = /volume1/Bellegarde/veille-scientifique/out/rattrapage-classement.csv
 sample = /volume1/Bellegarde/veille-scientifique/out/rattrapage-sample.csv
 sample_size = 100
 profile = standard
 enrichment_limit = 100
 article_limit = 15
-budget_usd = 0
+classification_batch_limit = 0
+daily_articles = 10
+budget_usd = 3
 ```
 
 Après lecture du plan, renseigner le plafond total dans `budget_usd`, puis passer
-`enabled` à `true`. Le commutateur global `[ai] enabled` doit lui aussi rester à
-`true` ; mettre l’un des deux à `false` suspend les appels. Chaque déclenchement
-produit au plus `article_limit` analyses ;
-la tâche s’arrête avant tout appel qui pourrait dépasser le budget cumulé. La
-remettre à `false` suspend immédiatement les appels IA suivants sans perdre l’état.
+`enabled` à `true`. Le classement s’arrête avant tout appel qui pourrait dépasser
+ce budget cumulé. Remettre `enabled` à `false` suspend aussi la distribution. La distribution
+quotidienne refuse de démarrer tant qu’un candidat reste sans classement. Elle
+envoie au plus `daily_articles` articles avec abstract. Le champ historique
+`article_limit` reste lu par les anciennes commandes, mais n’est plus utilisé par
+le nouveau planificateur.
 
 Avant chaque requête, l’application réserve dans SQLite son coût maximal. Une
 réponse interrompue conserve cette réservation par prudence, mais les autres

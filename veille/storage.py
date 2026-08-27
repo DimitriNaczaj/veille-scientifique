@@ -75,6 +75,9 @@ CREATE TABLE IF NOT EXISTS publication_ai_assessments (
     prompt_version TEXT NOT NULL,
     relevant INTEGER NOT NULL,
     priority TEXT NOT NULL,
+    interest_score INTEGER NOT NULL DEFAULT 0,
+    evidence_quality TEXT NOT NULL DEFAULT 'unknown',
+    classification_reason TEXT NOT NULL DEFAULT '',
     summary_fr TEXT NOT NULL,
     bellegarde_value TEXT NOT NULL,
     applications_json TEXT NOT NULL,
@@ -100,7 +103,7 @@ CREATE TABLE IF NOT EXISTS backfill_budget_reservations (
     UNIQUE(publication_identity, model, prompt_version)
 );
 """
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 def _utc_now():
@@ -123,6 +126,7 @@ class Store:
         if table_exists is None:
             self.connection.executescript(SCHEMA)
             self.connection.execute("PRAGMA user_version = {}".format(SCHEMA_VERSION))
+            self.connection.commit()
             return
 
         columns = {
@@ -197,9 +201,35 @@ class Store:
                 "ALTER TABLE backfill_budget_reservations ADD COLUMN "
                 "releasable_cost_usd REAL NOT NULL DEFAULT 0"
             )
-        if schema_version < SCHEMA_VERSION:
+        assessment_columns = {
+            row[1]
+            for row in self.connection.execute(
+                "PRAGMA table_info(publication_ai_assessments)"
+            )
+        }
+        if "interest_score" not in assessment_columns:
+            self.connection.execute(
+                "ALTER TABLE publication_ai_assessments ADD COLUMN "
+                "interest_score INTEGER NOT NULL DEFAULT 0"
+            )
+        if "evidence_quality" not in assessment_columns:
+            self.connection.execute(
+                "ALTER TABLE publication_ai_assessments ADD COLUMN "
+                "evidence_quality TEXT NOT NULL DEFAULT 'unknown'"
+            )
+        if "classification_reason" not in assessment_columns:
+            self.connection.execute(
+                "ALTER TABLE publication_ai_assessments ADD COLUMN "
+                "classification_reason TEXT NOT NULL DEFAULT ''"
+            )
+        # Les alias de titre ont été introduits en version 8. Une migration
+        # ultérieure ne doit pas reparcourir les dizaines de milliers de
+        # publications du rattrapage.
+        if schema_version < 8:
             self._backfill_title_aliases()
+        if schema_version < SCHEMA_VERSION:
             self.connection.execute("PRAGMA user_version = {}".format(SCHEMA_VERSION))
+        self.connection.commit()
 
     def _backfill_title_aliases(self):
         with self.connection:
@@ -445,9 +475,11 @@ class Store:
         self.connection.execute(
             "INSERT OR IGNORE INTO publication_ai_assessments("
             "publication_identity, model, prompt_version, relevant, priority, "
+            "interest_score, evidence_quality, classification_reason, "
             "summary_fr, bellegarde_value, applications_json, themes_json, "
             "input_tokens, output_tokens, checked_at"
-            ") SELECT ?, model, prompt_version, relevant, priority, summary_fr, "
+            ") SELECT ?, model, prompt_version, relevant, priority, "
+            "interest_score, evidence_quality, classification_reason, summary_fr, "
             "bellegarde_value, applications_json, themes_json, input_tokens, "
             "output_tokens, checked_at FROM publication_ai_assessments "
             "WHERE publication_identity = ?",
@@ -719,7 +751,8 @@ class Store:
 
     def load_ai_assessment(self, identity, model, prompt_version):
         row = self.connection.execute(
-            "SELECT relevant, priority, summary_fr, bellegarde_value, "
+            "SELECT relevant, priority, interest_score, evidence_quality, "
+            "classification_reason, summary_fr, bellegarde_value, "
             "applications_json, themes_json, input_tokens, output_tokens "
             "FROM publication_ai_assessments WHERE publication_identity = ? "
             "AND model = ? AND prompt_version = ?",
@@ -730,14 +763,44 @@ class Store:
         return AIAnalysis(
             relevant=bool(row[0]),
             priority=PublicationPriority(row[1]),
-            summary_fr=row[2],
-            bellegarde_value=row[3],
-            applications=tuple(json.loads(row[4])),
-            themes=tuple(json.loads(row[5])),
-            input_tokens=row[6],
-            output_tokens=row[7],
+            interest_score=row[2],
+            evidence_quality=row[3],
+            classification_reason=row[4],
+            summary_fr=row[5],
+            bellegarde_value=row[6],
+            applications=tuple(json.loads(row[7])),
+            themes=tuple(json.loads(row[8])),
+            input_tokens=row[9],
+            output_tokens=row[10],
             model=model,
             prompt_version=prompt_version,
+        )
+
+    def load_latest_ai_assessment(self, identity):
+        row = self.connection.execute(
+            "SELECT model, prompt_version, relevant, priority, interest_score, "
+            "evidence_quality, classification_reason, summary_fr, "
+            "bellegarde_value, applications_json, themes_json, input_tokens, "
+            "output_tokens FROM publication_ai_assessments "
+            "WHERE publication_identity = ? ORDER BY checked_at DESC LIMIT 1",
+            (identity,),
+        ).fetchone()
+        if row is None:
+            return None
+        return AIAnalysis(
+            model=row[0],
+            prompt_version=row[1],
+            relevant=bool(row[2]),
+            priority=PublicationPriority(row[3]),
+            interest_score=row[4],
+            evidence_quality=row[5],
+            classification_reason=row[6],
+            summary_fr=row[7],
+            bellegarde_value=row[8],
+            applications=tuple(json.loads(row[9])),
+            themes=tuple(json.loads(row[10])),
+            input_tokens=row[11],
+            output_tokens=row[12],
         )
 
     def save_ai_assessment(self, identity, analysis):
@@ -745,15 +808,19 @@ class Store:
             self.connection.execute(
                 "INSERT OR REPLACE INTO publication_ai_assessments("
                 "publication_identity, model, prompt_version, relevant, priority, "
+                "interest_score, evidence_quality, classification_reason, "
                 "summary_fr, bellegarde_value, applications_json, themes_json, "
                 "input_tokens, output_tokens, checked_at"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     identity,
                     analysis.model,
                     analysis.prompt_version,
                     1 if analysis.relevant else 0,
                     analysis.priority.value,
+                    analysis.interest_score,
+                    analysis.evidence_quality,
+                    analysis.classification_reason,
                     analysis.summary_fr,
                     analysis.bellegarde_value,
                     json.dumps(analysis.applications, ensure_ascii=False),
@@ -785,6 +852,26 @@ class Store:
             "FROM backfill_budget_reservations"
         ).fetchone()
         return float(row[0]), int(row[1]), int(row[2])
+
+    def backfill_budget_reservation(
+        self, publication_identity, model, prompt_version
+    ):
+        row = self.connection.execute(
+            "SELECT id, status, cost_upper_bound_usd, input_tokens, "
+            "output_tokens FROM backfill_budget_reservations "
+            "WHERE publication_identity = ? AND model = ? "
+            "AND prompt_version = ?",
+            (publication_identity, model, prompt_version),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": int(row[0]),
+            "status": row[1],
+            "cost_upper_bound_usd": float(row[2]),
+            "input_tokens": int(row[3]),
+            "output_tokens": int(row[4]),
+        }
 
     def reserve_backfill_budget(
         self,
@@ -904,12 +991,21 @@ class Store:
                 ),
             )
 
-    def _load_publications(self, require_metadata, pending_only, backfill_only=False):
+    def _load_publications(
+        self,
+        require_metadata,
+        pending_only,
+        backfill_only=False,
+        include_delivered=False,
+    ):
         conditions = []
         if pending_only:
             conditions.append("p.delivery_eligible = 1 AND p.delivered_at IS NULL")
         if backfill_only:
-            conditions.append("p.delivery_eligible = 0 AND p.delivered_at IS NULL")
+            condition = "p.delivery_eligible = 0"
+            if not include_delivered:
+                condition += " AND p.delivered_at IS NULL"
+            conditions.append(condition)
         if require_metadata:
             conditions.append(
                 "(p.doi IS NULL OR (pm.publication_identity IS NOT NULL "
@@ -957,12 +1053,22 @@ class Store:
     def catalog_publications(self):
         return self._load_publications(require_metadata=False, pending_only=False)
 
-    def backfill_publications(self):
+    def backfill_publications(self, include_delivered=False):
         return self._load_publications(
             require_metadata=False,
             pending_only=False,
             backfill_only=True,
+            include_delivered=include_delivered,
         )
+
+    def backfill_delivered_identities(self):
+        return {
+            row[0]
+            for row in self.connection.execute(
+                "SELECT identity FROM publications "
+                "WHERE delivery_eligible = 0 AND delivered_at IS NOT NULL"
+            ).fetchall()
+        }
 
     def pending_count(self):
         return self.connection.execute(

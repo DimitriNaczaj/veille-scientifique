@@ -54,6 +54,9 @@ class AIAnalysis:
     output_tokens: int
     model: str
     prompt_version: str
+    interest_score: int = 0
+    evidence_quality: str = "unknown"
+    classification_reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -76,6 +79,9 @@ class NewPublication:
     bellegarde_value: Optional[str] = None
     applications: Tuple[str, ...] = ()
     themes: Tuple[str, ...] = ()
+    interest_score: int = 0
+    evidence_quality: Optional[str] = None
+    classification_reason: Optional[str] = None
 
 
 @dataclass(frozen=True)

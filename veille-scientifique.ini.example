@@ -56,9 +56,14 @@ enabled = true
 enabled = false
 plan = /volume1/Bellegarde/veille-scientifique/out/rattrapage-plan.json
 output = /volume1/Bellegarde/veille-scientifique/out/rattrapage.html
+classification = /volume1/Bellegarde/veille-scientifique/out/rattrapage-classement.csv
 sample = /volume1/Bellegarde/veille-scientifique/out/rattrapage-sample.csv
 sample_size = 100
 profile = standard
 enrichment_limit = 100
 article_limit = 15
+# 0 classe tout le reste en un seul lancement, avec reprise après interruption.
+classification_batch_limit = 0
+# Nombre maximal d’articles pertinents envoyés chaque jour après le classement.
+daily_articles = 10
 budget_usd = 0

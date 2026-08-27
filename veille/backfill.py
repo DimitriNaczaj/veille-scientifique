@@ -75,7 +75,7 @@ def _cost(input_tokens, output_tokens, pricing, upper_bound=False):
 
 def _usage(candidates, pricing, conservative=False):
     characters_per_token = 3 if conservative else 4
-    output_per_publication = 400 if conservative else 250
+    output_per_publication = 480 if conservative else 320
     instruction_characters = len(INSTRUCTIONS)
     input_tokens = sum(
         _tokens(
@@ -200,6 +200,9 @@ def _analyzed_publication(publication, analysis):
         bellegarde_value=analysis.bellegarde_value,
         applications=analysis.applications,
         themes=analysis.themes,
+        interest_score=analysis.interest_score,
+        evidence_quality=analysis.evidence_quality,
+        classification_reason=analysis.classification_reason,
     )
 
 
@@ -421,6 +424,7 @@ def build_backfill_plan(
         "ai_called": False,
         "approval_required": True,
         "model": model,
+        "prompt_version": OpenAIAnalyzer.prompt_version,
         "profile": profile,
         "minimum_local_score": minimum_score,
         "publications_available": len(publications),
