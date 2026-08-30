@@ -5,6 +5,7 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from urllib.error import HTTPError
+from urllib.parse import quote
 
 from tests.test_pipeline import write_email
 from veille.crossref import CrossrefClient
@@ -408,8 +409,91 @@ class CrossrefClientTests(unittest.TestCase):
 
 
 class EnrichmentPipelineTests(unittest.TestCase):
+    def test_sciencedirect_title_completes_the_full_author_list_from_crossref(self):
+        class CrossrefByTitle:
+            def fetch_by_title(self, title):
+                self.title = title
+                return WorkMetadata(
+                    title=title,
+                    abstract=None,
+                    journal="Social Science & Medicine",
+                    published_date="2026-08-30",
+                    authors=(
+                        "Linda Pfister",
+                        "Junia Mannheimer",
+                        "Ida Hedkvist",
+                        "Rebecca Thorburn Stern",
+                        "Anna Sarkadi",
+                    ),
+                    url="https://doi.org/10.1016/j.socscimed.2026.119531",
+                )
+
+        class ElsevierWithOneAuthor:
+            def fetch_by_pii(self, pii):
+                return WorkMetadata(
+                    title=(
+                        "How social decisions shape preventive health behavior "
+                        "across asylum cases"
+                    ),
+                    abstract=(
+                        "An observational study examines administrative "
+                        "decision-making in asylum cases."
+                    ),
+                    journal="Social Science & Medicine",
+                    published_date="2026-08-30",
+                    authors=("Pfister L.",),
+                    url="https://doi.org/10.1016/j.socscimed.2026.119531",
+                )
+
+        class PublisherMustNotBeCalled:
+            def fetch_by_url(self, url):
+                raise AssertionError("La page ScienceDirect ne doit pas être lue.")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "inbox"
+            inbox.mkdir()
+            title = (
+                "How social decisions shape preventive health behavior "
+                "across asylum cases"
+            )
+            canonical_url = (
+                "https://www.sciencedirect.com/science?_ob=GatewayURL&"
+                "_method=citationSearch&_piikey=S0277953626005310"
+            )
+            source_url = (
+                "https://click.notification.elsevier.com/CL0/{}/1/1"
+            ).format(quote(canonical_url, safe=""))
+            write_email(
+                inbox / "newsletter.eml",
+                "<elsevier-authors@example.org>",
+                "Nouvelles publications",
+                markup='<a href="{}">{}</a>'.format(source_url, title),
+            )
+
+            report = run_pipeline(
+                inbox,
+                root / "veille.sqlite",
+                root / "digest.html",
+                metadata_provider=MetadataCascade(
+                    CrossrefByTitle(),
+                    PublisherMustNotBeCalled(),
+                    elsevier_client=ElsevierWithOneAuthor(),
+                ),
+                relevance_filter=BehavioralScienceFilter(),
+            )
+
+            self.assertEqual(report.publications_enriched, 1)
+            digest = (root / "digest.html").read_text(encoding="utf-8")
+            self.assertIn(
+                "Linda Pfister, Junia Mannheimer, Ida Hedkvist et al.",
+                digest,
+            )
+            self.assertNotIn("Rebecca Thorburn Stern", digest)
+
     def test_pipeline_keeps_sciencedirect_pii_when_publication_has_a_doi(self):
         pii_calls = []
+        title_calls = []
 
         class CrossrefWithoutAbstract:
             def fetch_by_doi(self, doi):
@@ -420,6 +504,22 @@ class EnrichmentPipelineTests(unittest.TestCase):
                     published_date="2026-08-26",
                     authors=(),
                     url="https://doi.org/" + doi,
+                )
+
+            def fetch_by_title(self, title):
+                title_calls.append(title)
+                return WorkMetadata(
+                    title=title,
+                    abstract=None,
+                    journal="Journal of Behavioral Research",
+                    published_date="2026-08-26",
+                    authors=(
+                        "Alice Martin",
+                        "Benoît Leroy",
+                        "Chloé Bernard",
+                        "David Robert",
+                    ),
+                    url="https://doi.org/10.1016/j.jbr.2026.100001",
                 )
 
         class ElsevierWithAbstract:
@@ -470,6 +570,12 @@ class EnrichmentPipelineTests(unittest.TestCase):
 
             self.assertEqual(report.publications_enriched, 1)
             self.assertEqual(pii_calls, ["S0167487026000413"])
+            self.assertEqual(
+                title_calls,
+                ["Behavioral choices in household energy use"],
+            )
+            digest = (root / "digest.html").read_text(encoding="utf-8")
+            self.assertIn("Alice Martin, Benoît Leroy, Chloé Bernard et al.", digest)
 
     def test_retries_publisher_after_crossref_not_found_without_repeating_crossref(self):
         crossref_calls = []

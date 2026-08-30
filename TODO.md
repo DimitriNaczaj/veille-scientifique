@@ -2,6 +2,14 @@
 
 - [ ] Ajouter à chaque article un bouton « Ajouter à Zotero ».
 - [ ] Ajouter, pour chaque auteur, un lien vers sa recherche Google Scholar.
+- [ ] Exporter un historique lisible des digests avec date d’envoi, catégorie et note.
+- [ ] Remplacer la note IA globale par une grille de critères explicites et auditables.
+
+## Livré en version 0.11.1
+
+- [x] Compléter par Crossref les listes d’auteurs tronquées par Elsevier,
+      y compris celles déjà stockées dans le rattrapage.
+- [x] Afficher les trois premiers auteurs puis `et al.` à partir de quatre auteurs.
 
 ## Livré en version 0.11.0
 

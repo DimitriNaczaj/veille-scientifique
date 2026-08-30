@@ -4,6 +4,7 @@ from pathlib import Path
 from .digest import write_digest
 from .mail_parser import parse_message
 from .models import PublicationPriority, RunReport
+from .publisher_pages import pii_from_sciencedirect_url
 from .storage import Store
 
 
@@ -88,7 +89,9 @@ def run_pipeline(
 
         if metadata_provider is not None:
             consecutive_enrichment_errors = 0
-            for identity, doi, url in store.publications_to_enrich(enrichment_limit):
+            for identity, doi, url, title in store.publications_to_enrich(
+                enrichment_limit
+            ):
                 reference = doi or url
                 try:
                     if doi is not None:
@@ -114,17 +117,30 @@ def run_pipeline(
                                         status="crossref_incomplete",
                                     )
                             if primary is not None and primary.abstract:
-                                metadata = primary
+                                metadata = (
+                                    metadata_provider.fetch_by_known_title(
+                                        title, primary
+                                    )
+                                    if url
+                                    and pii_from_sciencedirect_url(url) is not None
+                                    else primary
+                                )
                             else:
                                 metadata = metadata_provider.fetch_publisher_fallback(
                                     doi,
                                     primary,
                                     source_url=url,
+                                    title=title,
                                 )
                         else:
                             metadata = metadata_provider.fetch_by_doi(doi)
                     elif hasattr(metadata_provider, "fetch_by_url"):
-                        metadata = metadata_provider.fetch_by_url(url)
+                        if hasattr(metadata_provider, "fetch_by_known_title"):
+                            metadata = metadata_provider.fetch_by_url(
+                                url, title=title
+                            )
+                        else:
+                            metadata = metadata_provider.fetch_by_url(url)
                     else:
                         continue
                     if metadata is None:

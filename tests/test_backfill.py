@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from urllib.error import URLError
 from unittest.mock import patch
 
 from tests.test_digest_delivery import FakeSMTP
@@ -60,6 +61,200 @@ api_key_env = OPENAI_API_KEY
 
 
 class BackfillPlanCommandTests(unittest.TestCase):
+    def test_plan_repairs_cached_sciencedirect_metadata_with_one_author(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "veille.sqlite"
+            output = root / "plan.json"
+            config = root / "veille.ini"
+            write_config(config)
+            identity = "title:ptsd-asylum"
+            title = "The role of medical evidence certifying PTSD in asylum cases"
+            url = (
+                "https://www.sciencedirect.com/science?"
+                "_ob=GatewayURL&_piikey=S0277953626005310"
+            )
+            store = Store(database)
+            try:
+                store.add_message(
+                    ParsedMessage(
+                        identity="message:ptsd-asylum",
+                        subject="Ancienne newsletter Elsevier",
+                        sender="sciencedirect@example.org",
+                        publications=(
+                            PublicationCandidate(
+                                identity=identity,
+                                doi=None,
+                                title=title,
+                                url=url,
+                            ),
+                        ),
+                    ),
+                    root / "archive.mbox#1",
+                    delivery_eligible=False,
+                )
+                store.save_metadata(
+                    identity,
+                    WorkMetadata(
+                        title=title,
+                        abstract="An observational study of asylum decisions.",
+                        journal="Social Science & Medicine",
+                        published_date="2026-08-30",
+                        authors=("Linda Pfister",),
+                        url="https://doi.org/10.1016/j.socscimed.2026.119531",
+                    ),
+                )
+            finally:
+                store.close()
+
+            requests = []
+
+            def open_request(request, timeout=None, context=None):
+                requests.append(request.full_url)
+                return StubResponse(
+                    {
+                        "message": {
+                            "items": [
+                                {
+                                    "title": [title],
+                                    "author": [
+                                        {"given": "Linda", "family": "Pfister"},
+                                        {"given": "Junia", "family": "Mannheimer"},
+                                        {"given": "Ida", "family": "Hedkvist"},
+                                        {
+                                            "given": "Rebecca",
+                                            "family": "Thorburn Stern",
+                                        },
+                                        {"given": "Anna", "family": "Sarkadi"},
+                                    ],
+                                    "URL": (
+                                        "https://doi.org/10.1016/"
+                                        "j.socscimed.2026.119531"
+                                    ),
+                                }
+                            ]
+                        }
+                    }
+                )
+
+            with redirect_stdout(io.StringIO()):
+                exit_code = main(
+                    [
+                        "backfill-plan",
+                        "--config",
+                        str(config),
+                        "--database",
+                        str(database),
+                        "--output",
+                        str(output),
+                        "--enrichment-limit",
+                        "1",
+                    ],
+                    http_opener=open_request,
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(len(requests), 1)
+            self.assertIn("api.crossref.org/works?", requests[0])
+            store = Store(database)
+            try:
+                metadata = store.load_metadata(identity)
+            finally:
+                store.close()
+            self.assertEqual(
+                metadata.authors,
+                (
+                    "Linda Pfister",
+                    "Junia Mannheimer",
+                    "Ida Hedkvist",
+                    "Rebecca Thorburn Stern",
+                    "Anna Sarkadi",
+                ),
+            )
+
+    def test_plan_rotates_author_repairs_after_crossref_failures(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "veille.sqlite"
+            output = root / "plan.json"
+            config = root / "veille.ini"
+            write_config(config)
+            store = Store(database)
+            try:
+                for index in range(4):
+                    identity = "title:author-retry-{}".format(index)
+                    title = "Behavioral decision intervention {}".format(index)
+                    store.add_message(
+                        ParsedMessage(
+                            identity="message:author-retry-{}".format(index),
+                            subject="Ancienne newsletter Elsevier",
+                            sender="sciencedirect@example.org",
+                            publications=(
+                                PublicationCandidate(
+                                    identity=identity,
+                                    doi=None,
+                                    title=title,
+                                    url=(
+                                        "https://www.sciencedirect.com/science?"
+                                        "_ob=GatewayURL&_piikey=S02779536260053{}"
+                                    ).format(index),
+                                ),
+                            ),
+                        ),
+                        root / "archive.mbox#{}".format(index),
+                        delivery_eligible=False,
+                    )
+                    store.save_metadata(
+                        identity,
+                        WorkMetadata(
+                            title=title,
+                            abstract="An observational behavioral study.",
+                            journal="Behavioral Science",
+                            published_date="2026-08-30",
+                            authors=("Auteur Unique",),
+                            url="https://doi.org/10.1016/retry.{}".format(index),
+                        ),
+                    )
+            finally:
+                store.close()
+
+            requests = []
+
+            def failing_crossref(request, timeout=None, context=None):
+                requests.append(request.full_url)
+                raise URLError("Crossref indisponible")
+
+            for limit in (3, 1):
+                with redirect_stdout(io.StringIO()):
+                    self.assertEqual(
+                        main(
+                            [
+                                "backfill-plan",
+                                "--config",
+                                str(config),
+                                "--database",
+                                str(database),
+                                "--output",
+                                str(output),
+                                "--enrichment-limit",
+                                str(limit),
+                            ],
+                            http_opener=failing_crossref,
+                        ),
+                        0,
+                    )
+
+            self.assertEqual(len(requests), 4)
+            store = Store(database)
+            try:
+                statuses = store.backfill_metadata_statuses()
+            finally:
+                store.close()
+            self.assertEqual(
+                set(statuses.values()),
+                {"success_authors_retry"},
+            )
+
     def test_plan_retries_legacy_elsevier_not_found_with_api_key(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -165,7 +360,7 @@ class BackfillPlanCommandTests(unittest.TestCase):
             self.assertEqual(plan["publications_enriched"], 1)
             self.assertEqual(plan["enrichment_pending"], 1)
             self.assertFalse(plan["ready_for_ai"])
-            self.assertEqual(len(requests), 1)
+            self.assertEqual(len(requests), 2)
             self.assertEqual(
                 dict(requests[0].header_items()).get("X-ELS-APIKey"),
                 "elsevier-secret",

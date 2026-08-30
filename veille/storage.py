@@ -561,7 +561,7 @@ class Store:
     def publications_to_enrich(self, limit):
         return tuple(
             self.connection.execute(
-                "SELECT p.identity, p.doi, p.url "
+                "SELECT p.identity, p.doi, p.url, p.title "
                 "FROM publications p "
                 "LEFT JOIN publication_metadata pm "
                 "ON pm.publication_identity = p.identity "
@@ -675,9 +675,39 @@ class Store:
         ).fetchone()
         return row[0] if row is not None else None
 
+    def publication_source_url(self, identity):
+        row = self.connection.execute(
+            "SELECT url FROM publications WHERE identity = ?",
+            (identity,),
+        ).fetchone()
+        return row[0] if row is not None else None
+
+    def backfill_source_urls(self):
+        return dict(
+            self.connection.execute(
+                "SELECT identity, url FROM publications "
+                "WHERE delivery_eligible = 0 AND delivered_at IS NULL"
+            ).fetchall()
+        )
+
+    def mark_authors_retry(self, identity):
+        with self.connection:
+            self.connection.execute(
+                "UPDATE publication_metadata "
+                "SET status = 'success_authors_retry', checked_at = ? "
+                "WHERE publication_identity = ?",
+                (_utc_now(), identity),
+            )
+
     def save_metadata(self, identity, metadata, status=None):
         status = status or ("success" if metadata.abstract else "incomplete")
-        if status not in ("success", "incomplete", "crossref_incomplete"):
+        if status not in (
+            "success",
+            "success_authors_checked",
+            "success_authors_retry",
+            "incomplete",
+            "crossref_incomplete",
+        ):
             raise ValueError("Statut de métadonnées invalide.")
         with self.connection:
             publication = self.connection.execute(

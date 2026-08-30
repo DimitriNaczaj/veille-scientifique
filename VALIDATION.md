@@ -391,3 +391,15 @@ Tests automatisés sur Python 3.9 :
 - exclusion des articles sans abstract du digest quotidien ;
 - marquage comme distribué uniquement après succès SMTP ;
 - aperçu `--no-send` sans modification de la file.
+
+## Complétude des auteurs (version 0.11.1)
+
+Certaines réponses Elsevier ne fournissent que le premier auteur, même lorsque
+Crossref en référence plusieurs. Pour une publication ScienceDirect connue par
+son titre, l’enrichissement complète désormais la bibliographie avec Crossref et
+conserve la liste la plus longue. Le digest affiche les trois premiers auteurs,
+puis `et al.` à partir de quatre auteurs. Le plan de rattrapage reprend aussi,
+par lots bornés, les métadonnées ScienceDirect déjà enregistrées avec zéro ou
+un seul auteur ; les véritables publications à auteur unique ne sont vérifiées
+qu’une fois. Cette reprise utilise Crossref et ne dépend pas de la clé Elsevier.
+Une panne temporaire place l’entrée en fin de file pour une tentative ultérieure.

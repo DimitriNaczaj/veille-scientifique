@@ -192,12 +192,15 @@ def _merge_metadata(primary, secondary):
         return secondary
     if secondary is None:
         return primary
+    authors = primary.authors
+    if len(secondary.authors) > len(authors):
+        authors = secondary.authors
     return WorkMetadata(
         title=primary.title or secondary.title,
         abstract=primary.abstract or secondary.abstract,
         journal=primary.journal or secondary.journal,
         published_date=primary.published_date or secondary.published_date,
-        authors=primary.authors or secondary.authors,
+        authors=authors,
         url=primary.url or secondary.url,
     )
 
@@ -228,14 +231,23 @@ class MetadataCascade:
     def fetch_by_doi(self, doi, source_url=None, title=None):
         primary = self.fetch_primary_by_doi(doi)
         if primary is not None and primary.abstract:
-            return primary
+            return (
+                self.fetch_by_known_title(title, primary)
+                if source_url and pii_from_sciencedirect_url(source_url)
+                else primary
+            )
         primary = self.fetch_open_sources(doi, primary)
         if primary is not None and primary.abstract:
-            return primary
+            return (
+                self.fetch_by_known_title(title, primary)
+                if source_url and pii_from_sciencedirect_url(source_url)
+                else primary
+            )
         found = self.fetch_publisher_fallback(
             doi,
             primary,
             source_url=source_url,
+            title=title,
         )
         return self.fetch_by_known_title(title, found)
 
@@ -247,12 +259,19 @@ class MetadataCascade:
         reste le seul identifiant exploitable.
 
         Crossref est interrogé d’abord : sa recherche est gratuite et sans
-        plafond, et le DOI qu’elle rend rouvre l’accès aux catalogues ouverts,
+        plafond. Elle peut aussi compléter une liste d’auteurs tronquée par
+        l’éditeur. Le DOI qu’elle rend rouvre l’accès aux catalogues ouverts,
         dont la consultation par DOI ne coûte rien. La recherche OpenAlex par
         titre, elle, consomme un budget quotidien limité à cent requêtes : elle
         n’intervient qu’en dernier.
         """
-        if not title or (primary is not None and primary.abstract):
+        if not title:
+            return primary
+        if (
+            primary is not None
+            and primary.abstract
+            and len(primary.authors) > 1
+        ):
             return primary
         primary = self._title_via_crossref(title, primary)
         if primary is not None and primary.abstract:
@@ -316,7 +335,9 @@ class MetadataCascade:
             else None
         )
 
-    def fetch_publisher_fallback(self, doi, primary=None, source_url=None):
+    def fetch_publisher_fallback(
+        self, doi, primary=None, source_url=None, title=None
+    ):
         url = (
             source_url
             if source_url and pii_from_sciencedirect_url(source_url)
@@ -324,7 +345,7 @@ class MetadataCascade:
             if primary is not None and primary.url
             else "https://doi.org/" + quote(doi, safe="/")
         )
-        secondary = self.fetch_by_url(url)
+        secondary = self.fetch_by_url(url, title=title)
         return _merge_metadata(primary, secondary)
 
     def fetch_by_url(self, url, title=None):
@@ -333,7 +354,7 @@ class MetadataCascade:
         if pii and self.elsevier_client is not None:
             primary = self.elsevier_client.fetch_by_pii(pii)
             if primary is not None and primary.abstract:
-                return primary
+                return self.fetch_by_known_title(title, primary)
         # Sans résumé, la vue META d’Elsevier fournit tout de même le DOI.
         # C’est la seule clé d’entrée des catalogues ouverts, qui n’acceptent
         # pas les PII : sans ce relais, une publication connue par sa seule

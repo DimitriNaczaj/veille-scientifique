@@ -219,12 +219,27 @@ def _with_metadata(publication, metadata):
     )
 
 
-def _should_retry_legacy_elsevier(publication, cached_status, enabled):
+def _should_retry_legacy_elsevier(
+    publication, cached_status, enabled, source_url=None
+):
+    publisher_url = source_url or publication.url
     return (
         enabled
         and cached_status == "not_found"
-        and bool(publication.url)
-        and pii_from_sciencedirect_url(publication.url) is not None
+        and bool(publisher_url)
+        and pii_from_sciencedirect_url(publisher_url) is not None
+    )
+
+
+def _should_repair_incomplete_authors(
+    publication, cached_status, source_url=None
+):
+    publisher_url = source_url or publication.url
+    return (
+        cached_status in ("success", "success_authors_retry")
+        and len(publication.authors) <= 1
+        and bool(publisher_url)
+        and pii_from_sciencedirect_url(publisher_url) is not None
     )
 
 
@@ -252,36 +267,75 @@ def _enrich_backfill(database, config_path, limit, http_opener, candidates):
     consecutive_failures = 0
     attempted = 0
     try:
+        candidates = tuple(
+            sorted(
+                candidates,
+                key=lambda publication: (
+                    store.metadata_status(publication.identity)
+                    == "success_authors_retry"
+                ),
+            )
+        )
         for publication in candidates:
             if attempted >= limit:
                 break
             if not (publication.doi or publication.url):
                 continue
             cached_status = store.metadata_status(publication.identity)
+            source_url = (
+                store.publication_source_url(publication.identity)
+                or publication.url
+            )
             retry_legacy_elsevier = _should_retry_legacy_elsevier(
                 publication,
                 cached_status,
                 elsevier_client is not None,
+                source_url=source_url,
             )
-            if cached_status is not None and not retry_legacy_elsevier:
+            repair_incomplete_authors = _should_repair_incomplete_authors(
+                publication,
+                cached_status,
+                source_url=source_url,
+            )
+            if (
+                cached_status is not None
+                and not retry_legacy_elsevier
+                and not repair_incomplete_authors
+            ):
                 continue
             attempted += 1
             reference = publication.doi or publication.url
             try:
-                metadata = (
-                    provider.fetch_by_doi(
-                        publication.doi,
-                        source_url=publication.url,
+                crossref_failures = provider.source_failures.get("Crossref", 0)
+                if repair_incomplete_authors:
+                    cached_metadata = store.load_metadata(publication.identity)
+                    metadata = provider.fetch_by_known_title(
+                        publication.title,
+                        cached_metadata,
                     )
-                    if publication.doi is not None
-                    else provider.fetch_by_url(publication.url)
+                else:
+                    metadata = (
+                        provider.fetch_by_doi(
+                            publication.doi,
+                            source_url=source_url,
+                            title=publication.title,
+                        )
+                        if publication.doi is not None
+                        else provider.fetch_by_url(
+                            source_url,
+                            title=publication.title,
+                        )
+                    )
+                crossref_failed = (
+                    provider.source_failures.get("Crossref", 0)
+                    > crossref_failures
                 )
                 if metadata is None:
                     status = (
                         "elsevier_not_found"
                         if elsevier_client is not None
-                        and publication.url
-                        and pii_from_sciencedirect_url(publication.url) is not None
+                        and source_url
+                        and pii_from_sciencedirect_url(source_url) is not None
                         else "not_found"
                     )
                     store.save_metadata_not_found(
@@ -289,11 +343,33 @@ def _enrich_backfill(database, config_path, limit, http_opener, candidates):
                         status=status,
                     )
                 else:
-                    store.save_metadata(publication.identity, metadata)
+                    if (
+                        repair_incomplete_authors
+                        and crossref_failed
+                        and len(metadata.authors) <= len(publication.authors)
+                    ):
+                        store.mark_authors_retry(publication.identity)
+                        consecutive_failures = 0
+                        continue
+                    status = (
+                        "success_authors_checked"
+                        if (repair_incomplete_authors or retry_legacy_elsevier)
+                        and not crossref_failed
+                        and metadata.abstract
+                        and len(metadata.authors) <= 1
+                        else None
+                    )
+                    store.save_metadata(
+                        publication.identity,
+                        metadata,
+                        status=status,
+                    )
                     metadata_updates[publication.identity] = metadata
                     enriched += 1
                 consecutive_failures = 0
             except Exception as error:
+                if repair_incomplete_authors:
+                    store.mark_authors_retry(publication.identity)
                 consecutive_failures += 1
                 warnings.append("{}: {}".format(reference, error))
                 if consecutive_failures >= 3:
@@ -390,6 +466,7 @@ def build_backfill_plan(
     store = Store(database)
     try:
         metadata_statuses = store.backfill_metadata_statuses()
+        source_urls = store.backfill_source_urls()
     finally:
         store.close()
     retry_legacy_elsevier = False
@@ -407,6 +484,14 @@ def build_backfill_plan(
                     publication,
                     metadata_statuses.get(publication.identity),
                     retry_legacy_elsevier,
+                    source_url=source_urls.get(publication.identity),
+                )
+            )
+            or (
+                _should_repair_incomplete_authors(
+                    publication,
+                    metadata_statuses.get(publication.identity),
+                    source_url=source_urls.get(publication.identity),
                 )
             )
         )
