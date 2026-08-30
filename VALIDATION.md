@@ -403,3 +403,26 @@ par lots bornés, les métadonnées ScienceDirect déjà enregistrées avec zér
 un seul auteur ; les véritables publications à auteur unique ne sont vérifiées
 qu’une fois. Cette reprise utilise Crossref et ne dépend pas de la clé Elsevier.
 Une panne temporaire place l’entrée en fin de file pour une tentative ultérieure.
+
+## Grille de classement auditée (version 0.12.0)
+
+La consigne `bellegarde-v5` ne produit plus directement de catégorie ni de note
+globale. Elle retourne cinq sous-notes discrètes : adéquation aux missions sur 25,
+robustesse scientifique sur 25, actionnabilité sur 25, généralisation sur 15 et
+nouveauté sur 10. Le programme additionne ces valeurs, applique les exclusions et
+plafonds, puis détermine `high` à partir de 80, `watch` de 55 à 79 et `excluded`
+en dessous de 55.
+
+Une Pépite exige en plus un abstract, une robustesse d’au moins 20, une
+actionnabilité d’au moins 15, une généralisation d’au moins 9 et une qualité des
+preuves `strong`. Les études descriptives limitées à un contexte unique sont
+plafonnées à 69 ; les expériences de laboratoire isolées et revues systématiques
+sans tailles d’effet sont plafonnées à 79. Les expériences de moins de 25
+participants par condition, revues non systématiques, éditoriaux et travaux hors
+périmètre sont écartés indépendamment du total brut.
+
+Les tests de calibration couvrent notamment l’étude sur le PTSD dans les décisions
+d’asile suédoises : 15 + 15 + 10 + 3 + 6 = 49, donc `excluded`. Ils couvrent aussi
+la frontière `watch` à 55, tous les plafonds, chaque condition obligatoire de
+`high`, l’absence d’abstract, la migration SQLite et l’export des sous-notes dans
+le CSV de contrôle. Aucun appel OpenAI réel n’est effectué par ces tests.

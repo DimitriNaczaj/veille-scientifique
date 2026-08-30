@@ -14,7 +14,8 @@ Application de veille scientifique autonome et légère pour Synology DS218.
 - cache d’enrichissement persistant et reprise après panne ;
 - préfiltrage explicable en sciences comportementales, avec exclusions prudentes
   des corrections, sommaires et usages manifestement non humains des mots-clés ;
-- classement en « Pépites », « Éventuellement » et « Écarté » ;
+- classement auditable en « Pépites », « Éventuellement » et « Écarté », à
+  partir de cinq sous-notes et de plafonds méthodologiques calculés par le programme ;
 - second tri et résumés français structurés via l’API OpenAI, lorsque configurée ;
 - déduplication persistante avec SQLite ;
 - génération d’un digest HTML avec alternative texte et envoi SMTP ;
@@ -204,8 +205,9 @@ première exécution conserve une copie de la base sous le nom
 `veille.sqlite.pre-classification.bak`.
 
 Le fichier `out/rattrapage-classement.csv` contient le rang, la catégorie, le score
-d’intérêt, la qualité des preuves, la raison du classement, le résumé et les
-applications. Les articles sans abstract sont analysés uniquement sur leur
+d’intérêt brut et plafonné, les cinq sous-notes, les règles appliquées, la qualité
+des preuves, la raison du classement, le résumé et les applications. Les articles
+sans abstract sont analysés uniquement sur leur
 périmètre. Ils portent le statut `withheld_without_abstract` et ne sont jamais
 placés dans le digest quotidien.
 

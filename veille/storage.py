@@ -76,6 +76,13 @@ CREATE TABLE IF NOT EXISTS publication_ai_assessments (
     relevant INTEGER NOT NULL,
     priority TEXT NOT NULL,
     interest_score INTEGER NOT NULL DEFAULT 0,
+    raw_interest_score INTEGER NOT NULL DEFAULT 0,
+    mission_fit_score INTEGER NOT NULL DEFAULT 0,
+    scientific_robustness_score INTEGER NOT NULL DEFAULT 0,
+    actionability_score INTEGER NOT NULL DEFAULT 0,
+    generalizability_score INTEGER NOT NULL DEFAULT 0,
+    novelty_score INTEGER NOT NULL DEFAULT 0,
+    classification_rules_json TEXT NOT NULL DEFAULT '[]',
     evidence_quality TEXT NOT NULL DEFAULT 'unknown',
     classification_reason TEXT NOT NULL DEFAULT '',
     summary_fr TEXT NOT NULL,
@@ -103,7 +110,73 @@ CREATE TABLE IF NOT EXISTS backfill_budget_reservations (
     UNIQUE(publication_identity, model, prompt_version)
 );
 """
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
+
+_AI_ASSESSMENT_RESULT_COLUMNS = (
+    "relevant",
+    "priority",
+    "interest_score",
+    "raw_interest_score",
+    "mission_fit_score",
+    "scientific_robustness_score",
+    "actionability_score",
+    "generalizability_score",
+    "novelty_score",
+    "classification_rules_json",
+    "evidence_quality",
+    "classification_reason",
+    "summary_fr",
+    "bellegarde_value",
+    "applications_json",
+    "themes_json",
+    "input_tokens",
+    "output_tokens",
+)
+
+
+def _ai_analysis_from_row(row, model, prompt_version):
+    (
+        relevant,
+        priority,
+        interest_score,
+        raw_interest_score,
+        mission_fit_score,
+        scientific_robustness_score,
+        actionability_score,
+        generalizability_score,
+        novelty_score,
+        classification_rules_json,
+        evidence_quality,
+        classification_reason,
+        summary_fr,
+        bellegarde_value,
+        applications_json,
+        themes_json,
+        input_tokens,
+        output_tokens,
+    ) = row
+    return AIAnalysis(
+        relevant=bool(relevant),
+        priority=PublicationPriority(priority),
+        interest_score=interest_score,
+        raw_interest_score=raw_interest_score,
+        mission_fit_score=mission_fit_score,
+        scientific_robustness_score=scientific_robustness_score,
+        actionability_score=actionability_score,
+        generalizability_score=generalizability_score,
+        novelty_score=novelty_score,
+        classification_rules=tuple(json.loads(classification_rules_json)),
+        evidence_quality=evidence_quality,
+        classification_reason=classification_reason,
+        summary_fr=summary_fr,
+        bellegarde_value=bellegarde_value,
+        applications=tuple(json.loads(applications_json)),
+        themes=tuple(json.loads(themes_json)),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        model=model,
+        prompt_version=prompt_version,
+    )
 
 
 def _utc_now():
@@ -222,6 +295,21 @@ class Store:
                 "ALTER TABLE publication_ai_assessments ADD COLUMN "
                 "classification_reason TEXT NOT NULL DEFAULT ''"
             )
+        v5_assessment_columns = (
+            ("raw_interest_score", "INTEGER NOT NULL DEFAULT 0"),
+            ("mission_fit_score", "INTEGER NOT NULL DEFAULT 0"),
+            ("scientific_robustness_score", "INTEGER NOT NULL DEFAULT 0"),
+            ("actionability_score", "INTEGER NOT NULL DEFAULT 0"),
+            ("generalizability_score", "INTEGER NOT NULL DEFAULT 0"),
+            ("novelty_score", "INTEGER NOT NULL DEFAULT 0"),
+            ("classification_rules_json", "TEXT NOT NULL DEFAULT '[]'"),
+        )
+        for column, definition in v5_assessment_columns:
+            if column not in assessment_columns:
+                self.connection.execute(
+                    "ALTER TABLE publication_ai_assessments ADD COLUMN "
+                    "{} {}".format(column, definition)
+                )
         # Les alias de titre ont été introduits en version 8. Une migration
         # ultérieure ne doit pas reparcourir les dizaines de milliers de
         # publications du rattrapage.
@@ -475,11 +563,17 @@ class Store:
         self.connection.execute(
             "INSERT OR IGNORE INTO publication_ai_assessments("
             "publication_identity, model, prompt_version, relevant, priority, "
-            "interest_score, evidence_quality, classification_reason, "
+            "interest_score, raw_interest_score, mission_fit_score, "
+            "scientific_robustness_score, actionability_score, "
+            "generalizability_score, novelty_score, classification_rules_json, "
+            "evidence_quality, classification_reason, "
             "summary_fr, bellegarde_value, applications_json, themes_json, "
             "input_tokens, output_tokens, checked_at"
             ") SELECT ?, model, prompt_version, relevant, priority, "
-            "interest_score, evidence_quality, classification_reason, summary_fr, "
+            "interest_score, raw_interest_score, mission_fit_score, "
+            "scientific_robustness_score, actionability_score, "
+            "generalizability_score, novelty_score, classification_rules_json, "
+            "evidence_quality, classification_reason, summary_fr, "
             "bellegarde_value, applications_json, themes_json, input_tokens, "
             "output_tokens, checked_at FROM publication_ai_assessments "
             "WHERE publication_identity = ?",
@@ -781,67 +875,45 @@ class Store:
 
     def load_ai_assessment(self, identity, model, prompt_version):
         row = self.connection.execute(
-            "SELECT relevant, priority, interest_score, evidence_quality, "
-            "classification_reason, summary_fr, bellegarde_value, "
-            "applications_json, themes_json, input_tokens, output_tokens "
-            "FROM publication_ai_assessments WHERE publication_identity = ? "
-            "AND model = ? AND prompt_version = ?",
+            (
+                "SELECT {} ".format(", ".join(_AI_ASSESSMENT_RESULT_COLUMNS))
+                + "FROM publication_ai_assessments WHERE publication_identity = ? "
+                + "AND model = ? AND prompt_version = ?"
+            ),
             (identity, model, prompt_version),
         ).fetchone()
         if row is None:
             return None
-        return AIAnalysis(
-            relevant=bool(row[0]),
-            priority=PublicationPriority(row[1]),
-            interest_score=row[2],
-            evidence_quality=row[3],
-            classification_reason=row[4],
-            summary_fr=row[5],
-            bellegarde_value=row[6],
-            applications=tuple(json.loads(row[7])),
-            themes=tuple(json.loads(row[8])),
-            input_tokens=row[9],
-            output_tokens=row[10],
-            model=model,
-            prompt_version=prompt_version,
-        )
+        return _ai_analysis_from_row(row, model, prompt_version)
 
     def load_latest_ai_assessment(self, identity):
         row = self.connection.execute(
-            "SELECT model, prompt_version, relevant, priority, interest_score, "
-            "evidence_quality, classification_reason, summary_fr, "
-            "bellegarde_value, applications_json, themes_json, input_tokens, "
-            "output_tokens FROM publication_ai_assessments "
-            "WHERE publication_identity = ? ORDER BY checked_at DESC LIMIT 1",
+            (
+                "SELECT model, prompt_version, {} ".format(
+                    ", ".join(_AI_ASSESSMENT_RESULT_COLUMNS)
+                )
+                + "FROM publication_ai_assessments "
+                + "WHERE publication_identity = ? "
+                + "ORDER BY checked_at DESC LIMIT 1"
+            ),
             (identity,),
         ).fetchone()
         if row is None:
             return None
-        return AIAnalysis(
-            model=row[0],
-            prompt_version=row[1],
-            relevant=bool(row[2]),
-            priority=PublicationPriority(row[3]),
-            interest_score=row[4],
-            evidence_quality=row[5],
-            classification_reason=row[6],
-            summary_fr=row[7],
-            bellegarde_value=row[8],
-            applications=tuple(json.loads(row[9])),
-            themes=tuple(json.loads(row[10])),
-            input_tokens=row[11],
-            output_tokens=row[12],
-        )
+        return _ai_analysis_from_row(row[2:], row[0], row[1])
 
     def save_ai_assessment(self, identity, analysis):
         with self.connection:
             self.connection.execute(
                 "INSERT OR REPLACE INTO publication_ai_assessments("
                 "publication_identity, model, prompt_version, relevant, priority, "
-                "interest_score, evidence_quality, classification_reason, "
+                "interest_score, raw_interest_score, mission_fit_score, "
+                "scientific_robustness_score, actionability_score, "
+                "generalizability_score, novelty_score, classification_rules_json, "
+                "evidence_quality, classification_reason, "
                 "summary_fr, bellegarde_value, applications_json, themes_json, "
                 "input_tokens, output_tokens, checked_at"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     identity,
                     analysis.model,
@@ -849,6 +921,13 @@ class Store:
                     1 if analysis.relevant else 0,
                     analysis.priority.value,
                     analysis.interest_score,
+                    analysis.raw_interest_score,
+                    analysis.mission_fit_score,
+                    analysis.scientific_robustness_score,
+                    analysis.actionability_score,
+                    analysis.generalizability_score,
+                    analysis.novelty_score,
+                    json.dumps(analysis.classification_rules, ensure_ascii=False),
                     analysis.evidence_quality,
                     analysis.classification_reason,
                     analysis.summary_fr,

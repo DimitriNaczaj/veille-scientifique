@@ -3,7 +3,16 @@
 - [ ] Ajouter à chaque article un bouton « Ajouter à Zotero ».
 - [ ] Ajouter, pour chaque auteur, un lien vers sa recherche Google Scholar.
 - [ ] Exporter un historique lisible des digests avec date d’envoi, catégorie et note.
-- [ ] Remplacer la note IA globale par une grille de critères explicites et auditables.
+- [x] Remplacer la note IA globale par une grille de critères explicites et auditables.
+
+## Livré en version 0.12.0
+
+- [x] Noter séparément l’adéquation, la robustesse, l’actionnabilité, la
+      généralisation et la nouveauté.
+- [x] Calculer la catégorie dans le programme avec des seuils, conditions et
+      plafonds testés, sans laisser le modèle choisir directement la priorité.
+- [x] Conserver les sous-notes et règles appliquées dans SQLite et dans le CSV
+      de contrôle du rattrapage.
 
 ## Livré en version 0.11.1
 

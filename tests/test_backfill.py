@@ -37,6 +37,27 @@ class StubResponse:
         return json.dumps(self.payload).encode("utf-8")
 
 
+def v5_result(scores, quality, reason, summary, value="", applications=None, themes=None):
+    return {
+        "scope": "in_scope",
+        "scores": scores,
+        "method_flags": {
+            "opinion_editorial_or_nonempirical": False,
+            "sample_below_25_per_condition": False,
+            "non_systematic_review": False,
+            "single_context_descriptive": False,
+            "isolated_lab_experiment": False,
+            "systematic_review_without_effect_sizes": False,
+        },
+        "evidence_quality": quality,
+        "classification_reason": reason,
+        "summary_fr": summary,
+        "bellegarde_value": value,
+        "applications": applications or [],
+        "themes": themes or [],
+    }
+
+
 def write_config(path):
     Path(path).write_text(
         """[imap]
@@ -1135,17 +1156,21 @@ class BackfillPlanCommandTests(unittest.TestCase):
                     0,
                 )
 
-            result = {
-                "relevant": True,
-                "priority": "high",
-                "interest_score": 92,
-                "evidence_quality": "strong",
-                "classification_reason": "Preuve robuste et directement utile.",
-                "summary_fr": "Une intervention robuste réduit la consommation.",
-                "bellegarde_value": "Résultat directement mobilisable.",
-                "applications": ["Concevoir un message normatif"],
-                "themes": ["normes sociales"],
-            }
+            result = v5_result(
+                {
+                    "mission_fit": 25,
+                    "scientific_robustness": 25,
+                    "actionability": 25,
+                    "generalizability": 15,
+                    "novelty": 2,
+                },
+                "strong",
+                "Preuve robuste et directement utile.",
+                "Une intervention robuste réduit la consommation.",
+                "Résultat directement mobilisable.",
+                ["Concevoir un message normatif"],
+                ["normes sociales"],
+            )
 
             def open_request(request, timeout, context=None):
                 return StubResponse(
@@ -1276,17 +1301,18 @@ class BackfillPlanCommandTests(unittest.TestCase):
                                     {
                                         "type": "output_text",
                                         "text": json.dumps(
-                                            {
-                                                "relevant": False,
-                                                "priority": "excluded",
-                                                "interest_score": 12,
-                                                "evidence_quality": "weak",
-                                                "classification_reason": "Preuve trop faible.",
-                                                "summary_fr": "Écartée.",
-                                                "bellegarde_value": "",
-                                                "applications": [],
-                                                "themes": [],
-                                            }
+                                            v5_result(
+                                                {
+                                                    "mission_fit": 5,
+                                                    "scientific_robustness": 5,
+                                                    "actionability": 0,
+                                                    "generalizability": 0,
+                                                    "novelty": 2,
+                                                },
+                                                "weak",
+                                                "Preuve trop faible.",
+                                                "Écartée.",
+                                            )
                                         ),
                                     }
                                 ],
@@ -1501,17 +1527,18 @@ class BackfillPlanCommandTests(unittest.TestCase):
             self.assertEqual(release_exit, 0)
             self.assertTrue(release_report["reservation_released"])
 
-            result = {
-                "relevant": False,
-                "priority": "excluded",
-                "interest_score": 12,
-                "evidence_quality": "weak",
-                "classification_reason": "Preuve trop faible.",
-                "summary_fr": "Écartée.",
-                "bellegarde_value": "",
-                "applications": [],
-                "themes": [],
-            }
+            result = v5_result(
+                {
+                    "mission_fit": 5,
+                    "scientific_robustness": 5,
+                    "actionability": 0,
+                    "generalizability": 0,
+                    "novelty": 2,
+                },
+                "weak",
+                "Preuve trop faible.",
+                "Écartée.",
+            )
 
             def successful_opener(request, timeout, context=None):
                 calls.append(request)

@@ -34,6 +34,27 @@ class StubResponse:
         return json.dumps(self.payload).encode("utf-8")
 
 
+def v5_result(scores, quality, reason, summary, value, applications, themes):
+    return {
+        "scope": "in_scope",
+        "scores": scores,
+        "method_flags": {
+            "opinion_editorial_or_nonempirical": False,
+            "sample_below_25_per_condition": False,
+            "non_systematic_review": False,
+            "single_context_descriptive": False,
+            "isolated_lab_experiment": False,
+            "systematic_review_without_effect_sizes": False,
+        },
+        "evidence_quality": quality,
+        "classification_reason": reason,
+        "summary_fr": summary,
+        "bellegarde_value": value,
+        "applications": applications,
+        "themes": themes,
+    }
+
+
 def write_config(path, root):
     path.write_text(
         """[imap]
@@ -185,56 +206,72 @@ class CampaignFixture:
             title = document["title"]
             calls.append(title)
             if "Social norms" in title:
-                result = {
-                    "relevant": True,
-                    "priority": "high",
-                    "interest_score": 94,
-                    "evidence_quality": "strong",
-                    "classification_reason": "Preuve robuste et directement actionnable.",
-                    "summary_fr": "Une expérience randomisée teste les normes sociales.",
-                    "bellegarde_value": "Intervention directement mobilisable.",
-                    "applications": ["Concevoir des messages normatifs"],
-                    "themes": ["normes sociales", "énergie"],
-                }
+                result = v5_result(
+                    {
+                        "mission_fit": 25,
+                        "scientific_robustness": 25,
+                        "actionability": 25,
+                        "generalizability": 15,
+                        "novelty": 4,
+                    },
+                    "strong",
+                    "Preuve robuste et directement actionnable.",
+                    "Une expérience randomisée teste les normes sociales.",
+                    "Intervention directement mobilisable.",
+                    ["Concevoir des messages normatifs"],
+                    ["normes sociales", "énergie"],
+                )
             elif "Leadership" in title:
-                result = {
-                    "relevant": True,
-                    "priority": "watch",
-                    "interest_score": 58,
-                    "evidence_quality": "unknown",
-                    "classification_reason": "Sujet pertinent, abstract indisponible.",
-                    "summary_fr": (
+                result = v5_result(
+                    {
+                        "mission_fit": 20,
+                        "scientific_robustness": 0,
+                        "actionability": 20,
+                        "generalizability": 12,
+                        "novelty": 6,
+                    },
+                    "unknown",
+                    "Sujet pertinent, abstract indisponible.",
+                    (
                         "Abstract indisponible : classement thématique fondé "
                         "sur le titre."
                     ),
-                    "bellegarde_value": "Sujet potentiellement utile aux organisations.",
-                    "applications": [],
-                    "themes": ["leadership", "bien-être"],
-                }
+                    "Sujet potentiellement utile aux organisations.",
+                    [],
+                    ["leadership", "bien-être"],
+                )
             elif "exploratory" in title:
-                result = {
-                    "relevant": False,
-                    "priority": "excluded",
-                    "interest_score": 18,
-                    "evidence_quality": "weak",
-                    "classification_reason": "Étude exploratoire trop faible.",
-                    "summary_fr": "Enquête exploratoire de portée limitée.",
-                    "bellegarde_value": "",
-                    "applications": [],
-                    "themes": ["intentions"],
-                }
+                result = v5_result(
+                    {
+                        "mission_fit": 5,
+                        "scientific_robustness": 5,
+                        "actionability": 5,
+                        "generalizability": 3,
+                        "novelty": 0,
+                    },
+                    "weak",
+                    "Étude exploratoire trop faible.",
+                    "Enquête exploratoire de portée limitée.",
+                    "",
+                    [],
+                    ["intentions"],
+                )
             else:
-                result = {
-                    "relevant": True,
-                    "priority": "watch",
-                    "interest_score": 74,
-                    "evidence_quality": "moderate",
-                    "classification_reason": "Étude applicable mais preuve limitée.",
-                    "summary_fr": "Une étude de terrain teste une architecture de choix.",
-                    "bellegarde_value": "Piste applicable aux politiques publiques.",
-                    "applications": ["Tester une architecture de choix"],
-                    "themes": ["architecture de choix"],
-                }
+                result = v5_result(
+                    {
+                        "mission_fit": 20,
+                        "scientific_robustness": 15,
+                        "actionability": 20,
+                        "generalizability": 9,
+                        "novelty": 10,
+                    },
+                    "moderate",
+                    "Étude applicable mais preuve limitée.",
+                    "Une étude de terrain teste une architecture de choix.",
+                    "Piste applicable aux politiques publiques.",
+                    ["Tester une architecture de choix"],
+                    ["architecture de choix"],
+                )
             return StubResponse(
                 {
                     "output": [
@@ -283,6 +320,18 @@ class BackfillCampaignTests(unittest.TestCase):
             store = Store(fixture.database)
             try:
                 self.assertEqual(len(store.backfill_publications()), 4)
+                assessment = store.load_ai_assessment(
+                    "doi:10.1234/high",
+                    "gpt-5.6-luna",
+                    OpenAIAnalyzer.prompt_version,
+                )
+                self.assertEqual(assessment.raw_interest_score, 94)
+                self.assertEqual(assessment.mission_fit_score, 25)
+                self.assertEqual(assessment.scientific_robustness_score, 25)
+                self.assertEqual(assessment.actionability_score, 25)
+                self.assertEqual(assessment.generalizability_score, 15)
+                self.assertEqual(assessment.novelty_score, 4)
+                self.assertEqual(assessment.classification_rules, ())
             finally:
                 store.close()
             with fixture.export.open(encoding="utf-8", newline="") as stream:
@@ -290,11 +339,80 @@ class BackfillCampaignTests(unittest.TestCase):
             self.assertEqual(len(rows), 4)
             self.assertEqual(rows[0]["status"], "pending")
             self.assertEqual(rows[0]["interest_score"], "94")
+            self.assertEqual(rows[0]["raw_interest_score"], "94")
+            self.assertEqual(rows[0]["mission_fit_score"], "25")
+            self.assertEqual(rows[0]["scientific_robustness_score"], "25")
+            self.assertEqual(rows[0]["actionability_score"], "25")
+            self.assertEqual(rows[0]["generalizability_score"], "15")
+            self.assertEqual(rows[0]["novelty_score"], "4")
+            self.assertEqual(rows[0]["classification_rules"], "")
             self.assertTrue(rows[0]["authors"].startswith("'="))
             self.assertEqual(rows[1]["status"], "pending")
             self.assertEqual(rows[2]["status"], "withheld_without_abstract")
             self.assertEqual(rows[2]["has_abstract"], "no")
             self.assertEqual(rows[3]["status"], "excluded")
+
+    def test_migrates_v4_assessment_storage_with_auditable_defaults(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "legacy.sqlite"
+            store = Store(database)
+            store.close()
+            connection = sqlite3.connect(str(database))
+            try:
+                connection.executescript(
+                    """
+                    PRAGMA foreign_keys = OFF;
+                    DROP TABLE publication_ai_assessments;
+                    CREATE TABLE publication_ai_assessments (
+                        publication_identity TEXT NOT NULL REFERENCES publications(identity),
+                        model TEXT NOT NULL,
+                        prompt_version TEXT NOT NULL,
+                        relevant INTEGER NOT NULL,
+                        priority TEXT NOT NULL,
+                        interest_score INTEGER NOT NULL DEFAULT 0,
+                        evidence_quality TEXT NOT NULL DEFAULT 'unknown',
+                        classification_reason TEXT NOT NULL DEFAULT '',
+                        summary_fr TEXT NOT NULL,
+                        bellegarde_value TEXT NOT NULL,
+                        applications_json TEXT NOT NULL,
+                        themes_json TEXT NOT NULL,
+                        input_tokens INTEGER NOT NULL,
+                        output_tokens INTEGER NOT NULL,
+                        checked_at TEXT NOT NULL,
+                        PRIMARY KEY (publication_identity, model, prompt_version)
+                    );
+                    PRAGMA user_version = 9;
+                    """
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            migrated = Store(database)
+            try:
+                columns = {
+                    row[1]
+                    for row in migrated.connection.execute(
+                        "PRAGMA table_info(publication_ai_assessments)"
+                    )
+                }
+                self.assertTrue(
+                    {
+                        "raw_interest_score",
+                        "mission_fit_score",
+                        "scientific_robustness_score",
+                        "actionability_score",
+                        "generalizability_score",
+                        "novelty_score",
+                        "classification_rules_json",
+                    }.issubset(columns)
+                )
+                self.assertEqual(
+                    migrated.connection.execute("PRAGMA user_version").fetchone()[0],
+                    10,
+                )
+            finally:
+                migrated.close()
 
     def test_classification_resumes_without_paying_twice(self):
         with tempfile.TemporaryDirectory() as directory:

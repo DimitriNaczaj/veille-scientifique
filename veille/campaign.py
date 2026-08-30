@@ -33,6 +33,13 @@ CLASSIFICATION_FIELDS = (
     "reservation_id",
     "priority",
     "interest_score",
+    "raw_interest_score",
+    "mission_fit_score",
+    "scientific_robustness_score",
+    "actionability_score",
+    "generalizability_score",
+    "novelty_score",
+    "classification_rules",
     "evidence_quality",
     "has_abstract",
     "classification_reason",
@@ -298,6 +305,33 @@ def _write_classification(path, rows, model, prompt_version):
                     ),
                     "interest_score": (
                         analysis.interest_score if analysis is not None else ""
+                    ),
+                    "raw_interest_score": (
+                        analysis.raw_interest_score if analysis is not None else ""
+                    ),
+                    "mission_fit_score": (
+                        analysis.mission_fit_score if analysis is not None else ""
+                    ),
+                    "scientific_robustness_score": (
+                        analysis.scientific_robustness_score
+                        if analysis is not None
+                        else ""
+                    ),
+                    "actionability_score": (
+                        analysis.actionability_score if analysis is not None else ""
+                    ),
+                    "generalizability_score": (
+                        analysis.generalizability_score
+                        if analysis is not None
+                        else ""
+                    ),
+                    "novelty_score": (
+                        analysis.novelty_score if analysis is not None else ""
+                    ),
+                    "classification_rules": (
+                        _safe_csv_text(" | ".join(analysis.classification_rules))
+                        if analysis is not None
+                        else ""
                     ),
                     "evidence_quality": (
                         _safe_csv_text(analysis.evidence_quality)

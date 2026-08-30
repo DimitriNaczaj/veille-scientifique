@@ -57,6 +57,13 @@ class AIAnalysis:
     interest_score: int = 0
     evidence_quality: str = "unknown"
     classification_reason: str = ""
+    raw_interest_score: int = 0
+    mission_fit_score: int = 0
+    scientific_robustness_score: int = 0
+    actionability_score: int = 0
+    generalizability_score: int = 0
+    novelty_score: int = 0
+    classification_rules: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
