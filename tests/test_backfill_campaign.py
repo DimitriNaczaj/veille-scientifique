@@ -40,6 +40,7 @@ def v5_result(scores, quality, reason, summary, value, applications, themes):
         "scores": scores,
         "method_flags": {
             "opinion_editorial_or_nonempirical": False,
+            "clinical_outcomes_without_behavior": False,
             "sample_below_25_per_condition": False,
             "non_systematic_review": False,
             "single_context_descriptive": False,

@@ -14,6 +14,13 @@
 - [x] Conserver les sous-notes et règles appliquées dans SQLite et dans le CSV
       de contrôle du rattrapage.
 
+## Livré en version 0.12.1
+
+- [x] Écarter explicitement les travaux dont les seuls résultats sont cliniques,
+      physiologiques ou de bien-être, sans comportement ni décision mesurés.
+- [x] Calibrer cette règle sur une méta-analyse d’interventions fondées sur la
+      nature détectée comme faux positif pendant le pilote v5.
+
 ## Livré en version 0.11.1
 
 - [x] Compléter par Crossref les listes d’auteurs tronquées par Elsevier,

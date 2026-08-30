@@ -426,3 +426,18 @@ d’asile suédoises : 15 + 15 + 10 + 3 + 6 = 49, donc `excluded`. Ils couvrent 
 la frontière `watch` à 55, tous les plafonds, chaque condition obligatoire de
 `high`, l’absence d’abstract, la migration SQLite et l’export des sous-notes dans
 le CSV de contrôle. Aucun appel OpenAI réel n’est effectué par ces tests.
+
+## Calibration des résultats cliniques (version 0.12.1)
+
+Un pilote réel de 20 publications avec `bellegarde-v5` a produit 2 `high`,
+4 `watch` et 14 `excluded`, pour un coût majoré enregistré de 0,018260 $US.
+Une des deux Pépites était une méta-analyse robuste d’interventions fondées sur la
+nature, mais ses seuls résultats portaient sur le stress, l’anxiété, la dépression,
+les affects et la relaxation. Elle ne mesurait aucun comportement ni aucune
+décision et constituait donc un faux positif du test de périmètre.
+
+La consigne `bellegarde-v5.1` ajoute le drapeau auditable
+`clinical_outcomes_without_behavior`. Le programme le traite comme une exclusion
+dure, indépendamment du total brut. Le test de régression reproduit les sous-notes
+du pilote — 20 + 25 + 20 + 15 + 8 = 88 — puis vérifie que la note effective est
+plafonnée à 54 et la publication classée `excluded`.

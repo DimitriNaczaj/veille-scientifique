@@ -16,6 +16,8 @@ Application de veille scientifique autonome et légère pour Synology DS218.
   des corrections, sommaires et usages manifestement non humains des mots-clés ;
 - classement auditable en « Pépites », « Éventuellement » et « Écarté », à
   partir de cinq sous-notes et de plafonds méthodologiques calculés par le programme ;
+- exclusion des travaux limités à des résultats cliniques, physiologiques ou de
+  bien-être lorsqu’aucun comportement ni aucune décision n’est mesuré ;
 - second tri et résumés français structurés via l’API OpenAI, lorsque configurée ;
 - déduplication persistante avec SQLite ;
 - génération d’un digest HTML avec alternative texte et envoi SMTP ;
