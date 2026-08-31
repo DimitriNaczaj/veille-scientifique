@@ -12,6 +12,9 @@ from .mail_diagnostics import (
     create_tls_context,
     load_smtp_settings,
 )
+from .citations import RIS_FILENAME, RIS_MEDIA_TYPE, render_ris
+from .feedback import feedback_mailto, load_feedback_settings
+from .models import PublicationPriority
 
 
 _ASSET_DIR = Path(__file__).resolve().parent.parent / "assets"
@@ -63,7 +66,7 @@ def _publication_url(publication):
     return publication.url or ""
 
 
-def _plain_digest(publications):
+def _plain_digest(publications, feedback_settings=None):
     lines = ["Veille quotidienne", ""]
     for publication in publications:
         lines.append(publication.title or publication.doi or "Publication sans titre")
@@ -74,6 +77,24 @@ def _plain_digest(publications):
         url = _publication_url(publication)
         if url:
             lines.append(url)
+        if feedback_settings is not None:
+            lines.append("Requalifier :")
+            for priority, label in (
+                (PublicationPriority.HIGH, "Pépite"),
+                (PublicationPriority.WATCH, "Éventuellement"),
+                (PublicationPriority.EXCLUDED, "Écarté"),
+            ):
+                lines.append(
+                    "{} : {}".format(
+                        label,
+                        feedback_mailto(
+                            publication.identity,
+                            publication.title,
+                            priority,
+                            feedback_settings,
+                        ),
+                    )
+                )
         lines.append("")
     return "\n".join(lines)
 
@@ -111,6 +132,7 @@ class SMTPDigestSender:
             return
         smtp = load_smtp_settings(self.config_path)
         digest = load_digest_delivery_settings(self.config_path)
+        feedback_settings = load_feedback_settings(self.config_path)
         html = Path(digest_path).read_text(encoding="utf-8")
         message = EmailMessage()
         message["From"] = digest.from_address
@@ -125,9 +147,21 @@ class SMTPDigestSender:
             date.today().isoformat(),
             article_count,
         )
-        message.set_content(_plain_digest(publications))
+        message.set_content(_plain_digest(publications, feedback_settings))
         message.add_alternative(html, subtype="html")
         _add_related_images(message, html)
+        # Le fichier RIS suit le digest : c’est le seul geste qui importe
+        # réellement tout le lot dans Zotero, le connecteur ne travaillant
+        # que depuis un navigateur.
+        ris = render_ris(publications)
+        if ris:
+            maintype, subtype = RIS_MEDIA_TYPE
+            message.add_attachment(
+                ris.encode("utf-8"),
+                maintype=maintype,
+                subtype=subtype,
+                filename=RIS_FILENAME,
+            )
         client = None
         try:
             client = self.smtp_factory(smtp.host, smtp.port, timeout=30)

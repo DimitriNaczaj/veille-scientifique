@@ -18,6 +18,8 @@ Application de veille scientifique autonome et légère pour Synology DS218.
   partir de cinq sous-notes et de plafonds méthodologiques calculés par le programme ;
 - exclusion des travaux limités à des résultats cliniques, physiologiques ou de
   bien-être lorsqu’aucun comportement ni aucune décision n’est mesuré ;
+- trois boutons de requalification dans chaque article retenu, validés par
+  l’envoi d’un courriel signé puis conservés comme corpus de feedback ;
 - second tri et résumés français structurés via l’API OpenAI, lorsque configurée ;
 - déduplication persistante avec SQLite ;
 - génération d’un digest HTML avec alternative texte et envoi SMTP ;
@@ -321,6 +323,39 @@ identifiants IMAP avec le port 587 et STARTTLS. La vérification TLS reste toujo
 active. Sur un système dont Python ne trouve pas les certificats racine, définir
 `SSL_CERT_FILE` vers le bundle CA valide installé sur la machine.
 
+## Requalifier les articles depuis le digest
+
+Lorsque `[feedback].enabled = true`, chaque Pépite ou article « Éventuellement »
+propose trois boutons : **Pépite**, **Éventuellement** et **Écarté**. Un clic ouvre
+un nouveau courriel prérempli. La requalification n’est enregistrée qu’après
+l’envoi de ce message ; les lignes techniques `VEILLE-FEEDBACK/1`, `choice` et
+`token` ne doivent pas être modifiées.
+
+La commande quotidienne ouvre séparément `[feedback].folder` — `INBOX` par
+défaut — en lecture seule, télécharge les nouveaux messages dans
+`feedback-inbox`, puis accepte uniquement ceux qui réunissent les trois
+conditions suivantes :
+
+- l’expéditeur correspond exactement à `[feedback].authorized_sender` ;
+- le choix vaut `high`, `watch` ou `excluded` ;
+- le jeton HMAC désigne une publication connue et sa signature est valide.
+
+Chaque réponse est ajoutée à SQLite sans écraser l’analyse IA initiale. Une
+nouvelle réponse sur le même article devient la qualification utilisateur
+courante, tandis que l’historique reste conservé. Le corpus complet, avec le
+classement IA d’origine, peut être exporté sans réseau ni appel IA :
+
+```bash
+python3 -m veille feedback-export \
+  --database data/veille.sqlite \
+  --output out/feedback.csv
+```
+
+Le feedback ne modifie pas automatiquement le prompt après chaque clic. Le CSV
+sert à repérer les désaccords récurrents, calibrer une nouvelle version du filtre
+et rejouer les exemples validés comme tests de régression, afin d’éviter le
+sur-ajustement sur un article isolé.
+
 ## Tests
 
 ```bash
@@ -378,7 +413,9 @@ mot de passe sans l’afficher, l’isole dans `secrets.env` en mode `600`, exé
 tests, vérifie IMAP/SMTP et lance une recette `--no-ai --no-send` dans une base
 séparée. L’INI ne contient alors que le nom de la variable d’environnement. Il ne
 crée et n’active aucune tâche planifiée. Une relance réutilise le dossier et peut
-conserver la configuration privée existante. En mode privé, le jeton GitHub n’est
+conserver la configuration privée existante. Lors d’une mise à jour, il ajoute si
+nécessaire la section `[feedback]`, le dossier local et un secret de signature
+aléatoire distinct du mot de passe de messagerie. En mode privé, le jeton GitHub n’est
 écrit dans aucun fichier et est supprimé de l’environnement du wizard dès la fin
 du téléchargement. Le même jeton peut servir aux mises à jour suivantes jusqu’à
 son expiration ; il suffit ensuite d’en créer un nouveau avec les mêmes droits.
@@ -495,3 +532,39 @@ Le script charge les secrets, sauvegarde la base au préalable et traite
 
 La commande n’écrit que les entrées pour lesquelles un résumé a été trouvé.
 Relancer jusqu’à ce que « Restant sans résumé » cesse de diminuer.
+
+## Historique des digests
+
+Chaque envoi est consigné avec la catégorie et la note du jour, qu’une
+requalification ultérieure ne réécrit pas. Pour relire une campagne :
+
+```
+"$PYTHON_BIN" -m veille digest-history \
+  --database /volume1/Bellegarde/veille-scientifique/data/veille.sqlite \
+  --output /volume1/Bellegarde/veille-scientifique/out/historique-digests.html \
+  --csv-output /volume1/Bellegarde/veille-scientifique/out/historique-digests.csv
+```
+
+## Préparer la consigne suivante
+
+Les boutons de requalification du digest alimentent un corpus de corrections.
+Le rapport confronte le verdict du modèle à celui du consultant et indique
+quels critères de la grille séparent réellement les deux sens d’erreur :
+
+```
+"$PYTHON_BIN" -m veille feedback-review \
+  --database /volume1/Bellegarde/veille-scientifique/data/veille.sqlite \
+  --output /volume1/Bellegarde/veille-scientifique/out/revision-consigne.html \
+  --csv-output /volume1/Bellegarde/veille-scientifique/out/revision-consigne.csv
+```
+
+Un critère dont la note ne varie pas selon que l’article a été remonté ou
+abaissé ne discrimine rien : c’est lui qu’il faut reformuler dans la consigne.
+Le rapport refuse de conclure sous trois corrections.
+
+## Références bibliographiques
+
+Chaque digest porte un fichier `.ris` en pièce jointe, importable d’un seul
+geste dans Zotero. Le bouton « Ajouter à Zotero » de chaque article ouvre sa
+page, où le connecteur enregistre la référence : Zotero n’expose aucun lien
+d’ajout utilisable depuis un courriel.

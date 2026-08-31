@@ -37,6 +37,7 @@ def run_pipeline(
     analysis_provider=None,
     ai_limit=30,
     delivery_handler=None,
+    feedback_settings=None,
 ):
     if (
         isinstance(enrichment_limit, bool)
@@ -216,9 +217,19 @@ def run_pipeline(
             selected_publications,
             total_count=len(handled_publications),
             excluded_count=publications_excluded,
+            feedback_settings=feedback_settings,
         )
         if delivery_handler is not None:
             delivery_handler.send(output, selected_publications)
+        if selected_publications:
+            store.record_digest_run(
+                "quotidien",
+                selected_publications,
+                recipient=getattr(delivery_handler, "recipient", "") or "",
+                output_path=output,
+                sent=bool(getattr(delivery_handler, "sent", False)),
+                total_count=len(handled_publications),
+            )
         store.mark_delivered(handled_publications)
         publications_pending = store.pending_count()
     finally:

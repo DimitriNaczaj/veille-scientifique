@@ -23,6 +23,18 @@ recipient = consultant@example.org
 from_address = science-digest@example.org
 subject_prefix = Veille scientifique Bellegarde
 
+[feedback]
+# Chaque bouton prépare un courriel vers la boîte scientifique. Seuls les
+# messages envoyés par le destinataire du digest sont acceptés.
+enabled = true
+recipient = science-digest@example.org
+authorized_sender = consultant@example.org
+folder = INBOX
+inbox = /volume1/Bellegarde/veille-scientifique/feedback-inbox
+output = /volume1/Bellegarde/veille-scientifique/out/feedback.csv
+token_secret_env = SCIENCE_DIGEST_FEEDBACK_SECRET
+sync_limit = 50
+
 [app]
 inbox = /volume1/Bellegarde/veille-scientifique/inbox
 database = /volume1/Bellegarde/veille-scientifique/data/veille.sqlite

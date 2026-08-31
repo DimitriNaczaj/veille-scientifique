@@ -10,6 +10,7 @@ from urllib.parse import quote, urlencode
 
 from veille.mail_parser import normalize_doi, parse_message
 from veille.digest import render_digest
+from veille.feedback import FeedbackSettings
 from veille.models import NewPublication, PublicationPriority
 from veille.pipeline import run_pipeline
 from veille.storage import Store
@@ -473,6 +474,34 @@ class PipelineTests(unittest.TestCase):
         self.assertIn(watch_summary, watch_digest)
         self.assertNotIn(watch_abstract, watch_digest)
         self.assertNotIn(">Abstract</p>", watch_digest)
+
+    def test_digest_offers_three_signed_email_feedback_buttons(self):
+        publication = NewPublication(
+            identity="doi:10.1234/feedback-buttons",
+            doi="10.1234/feedback-buttons",
+            title="A study to requalify",
+            url=None,
+            source_subject="Newsletter",
+            source_sender="publisher@example.org",
+            priority=PublicationPriority.HIGH,
+        )
+        settings = FeedbackSettings(
+            enabled=True,
+            recipient="science-digest@example.org",
+            authorized_sender="consultant@example.org",
+            folder="INBOX",
+            inbox="/tmp/feedback",
+            token_secret="feedback-secret",
+            sync_limit=50,
+        )
+
+        digest = render_digest((publication,), feedback_settings=settings)
+
+        self.assertIn("Requalifier cet article", digest)
+        self.assertIn(">Pépite</a>", digest)
+        self.assertIn(">Éventuellement</a>", digest)
+        self.assertIn(">Écarté</a>", digest)
+        self.assertEqual(digest.count("mailto:science-digest@example.org"), 3)
 
     def test_digest_uses_natural_french_agreements_for_counts(self):
         publication = NewPublication(

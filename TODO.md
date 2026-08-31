@@ -1,9 +1,13 @@
 # Todo — version 2
 
-- [ ] Ajouter à chaque article un bouton « Ajouter à Zotero ».
 - [ ] Ajouter, pour chaque auteur, un lien vers sa recherche Google Scholar.
-- [ ] Exporter un historique lisible des digests avec date d’envoi, catégorie et note.
 - [x] Remplacer la note IA globale par une grille de critères explicites et auditables.
+
+## Livré en version 0.14.0
+
+- [x] Joindre au digest un fichier RIS et ouvrir chaque article pour Zotero.
+- [x] Exporter un historique lisible des digests avec date d’envoi, catégorie et note.
+- [x] Analyser les requalifications pour préparer la consigne suivante.
 
 ## Livré en version 0.12.0
 

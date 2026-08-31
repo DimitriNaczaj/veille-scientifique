@@ -8,6 +8,7 @@ from .elsevier import elsevier_client_from_config
 from .europepmc import europepmc_client_from_config
 from .openalex import openalex_client_from_config
 from .filtering import BehavioralScienceFilter
+from .feedback import load_feedback_settings, run_feedback_import
 from .imap_sync import run_imap_sync
 from .mail_diagnostics import _load_config, load_imap_settings
 from .pipeline import run_pipeline
@@ -22,16 +23,36 @@ class DailyReport:
     email_sent: bool
     recipient: object
     daily_warnings: tuple
+    feedback_sync_report: object = None
+    feedback_import_report: object = None
 
     @property
     def errors(self):
-        return tuple(self.sync_report.errors) + tuple(self.pipeline_report.errors)
+        feedback_errors = (
+            tuple(self.feedback_sync_report.errors)
+            if self.feedback_sync_report is not None
+            else ()
+        )
+        return (
+            feedback_errors
+            + tuple(self.sync_report.errors)
+            + tuple(self.pipeline_report.errors)
+        )
 
     def as_dict(self):
         return {
             "service": "daily",
             "status": "ok" if not self.errors else "partial",
             "sync": self.sync_report.as_dict(),
+            "feedback": (
+                {
+                    "enabled": True,
+                    "sync": self.feedback_sync_report.as_dict(),
+                    "import": self.feedback_import_report.as_dict(),
+                }
+                if self.feedback_sync_report is not None
+                else {"enabled": False}
+            ),
             "pipeline": self.pipeline_report.as_dict(),
             "ai_enabled": self.ai_enabled,
             "email_sent": self.email_sent,
@@ -74,6 +95,7 @@ def run_daily(
     ai_limit=None,
     no_ai=False,
     no_send=False,
+    no_feedback=False,
     imap_factory=None,
     smtp_factory=None,
     http_opener=None,
@@ -113,6 +135,7 @@ def run_daily(
     )
 
     warnings = []
+    feedback_settings = None if no_feedback else load_feedback_settings(config_path)
     analysis_provider = None
     ai_enabled = not no_ai
     if config.has_section("ai"):
@@ -155,6 +178,26 @@ def run_daily(
             smtp_factory=smtp_factory,
         )
 
+    feedback_sync_report = None
+    feedback_import_report = None
+    if feedback_settings is not None:
+        feedback_sync_report = run_imap_sync(
+            config_path,
+            feedback_settings.inbox,
+            database,
+            limit=feedback_settings.sync_limit,
+            initial_mode="latest",
+            client_factory=imap_factory,
+            folder=feedback_settings.folder,
+        )
+        feedback_import_report = run_feedback_import(
+            feedback_settings.inbox,
+            database,
+            authorized_sender=feedback_settings.authorized_sender,
+            token_secret=feedback_settings.token_secret,
+        )
+        warnings.extend(feedback_import_report.warnings)
+
     sync_report = run_imap_sync(
         config_path,
         inbox,
@@ -173,6 +216,7 @@ def run_daily(
         analysis_provider=analysis_provider,
         ai_limit=ai_limit,
         delivery_handler=delivery_handler,
+        feedback_settings=feedback_settings,
     )
     return DailyReport(
         sync_report=sync_report,
@@ -181,4 +225,6 @@ def run_daily(
         email_sent=bool(delivery_handler and delivery_handler.sent),
         recipient=delivery_handler.recipient if delivery_handler else None,
         daily_warnings=tuple(warnings),
+        feedback_sync_report=feedback_sync_report,
+        feedback_import_report=feedback_import_report,
     )

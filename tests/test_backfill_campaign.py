@@ -410,7 +410,7 @@ class BackfillCampaignTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     migrated.connection.execute("PRAGMA user_version").fetchone()[0],
-                    10,
+                    12,
                 )
             finally:
                 migrated.close()

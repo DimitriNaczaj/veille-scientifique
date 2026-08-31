@@ -3,6 +3,7 @@ from html import escape
 from urllib.parse import quote
 
 from .atomic import atomic_open
+from .feedback import feedback_mailto
 from .models import PublicationPriority
 
 
@@ -101,7 +102,64 @@ def _applications_block(applications):
         </tr>""".format(items)
 
 
-def _publication_html(publication):
+def _feedback_block(publication, settings):
+    if settings is None or not settings.enabled:
+        return ""
+    buttons = []
+    button_styles = {
+        PublicationPriority.HIGH: ("Pépite", "#E2F5EA", "#2C4A39"),
+        PublicationPriority.WATCH: ("Éventuellement", "#F1F1F1", "#57555A"),
+        PublicationPriority.EXCLUDED: ("Écarté", "#FBEAEA", "#8A3434"),
+    }
+    for priority, (label, background, color) in button_styles.items():
+        link = escape(
+            feedback_mailto(
+                publication.identity,
+                publication.title,
+                priority,
+                settings,
+            ),
+            quote=True,
+        )
+        buttons.append(
+            '<td style="padding:0 8px 8px 0;">'
+            '<a href="{}" style="display:block;padding:10px 14px;'
+            'border-radius:999px;background:{};color:{};font-family:'
+            'Arial,Helvetica,sans-serif;font-size:12px;line-height:16px;'
+            'font-weight:bold;text-decoration:none;white-space:nowrap;">{}</a>'
+            '</td>'.format(link, background, color, label)
+        )
+    return """
+        <tr>
+          <td class="pad" style="padding:24px 34px 0 34px;font-family:Arial,Helvetica,sans-serif;">
+            <p class="article-label ink-3" style="margin:0 0 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:14px;letter-spacing:1.4px;color:#7A777D;text-transform:uppercase;">Requalifier cet article</p>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr>{}</tr></table>
+            <p class="ink-3" style="margin:2px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:17px;color:#7A777D;">Le bouton prépare un courriel. La qualification est enregistrée uniquement après son envoi.</p>
+          </td>
+        </tr>""".format("".join(buttons))
+
+
+def _zotero_block(publication):
+    """Lien d’enregistrement bibliographique pour un article.
+
+    Zotero n’a pas de lien « ajouter » utilisable depuis un courriel : son
+    connecteur enregistre depuis une page ouverte dans le navigateur. Le lien
+    mène donc à la page de l’article, où un clic sur le connecteur suffit ; le
+    fichier RIS joint au message reste la voie pour importer tout le lot.
+    """
+    url = _publication_url(publication)
+    if not url:
+        return ""
+    return """
+        <tr>
+          <td class="pad" style="padding:18px 34px 0 34px;font-family:Arial,Helvetica,sans-serif;">
+            <a href="{url}" style="display:inline-block;padding:10px 16px;border-radius:999px;background:#EDEBF5;color:#3B3560;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:16px;font-weight:bold;text-decoration:none;white-space:nowrap;">Ajouter à Zotero</a>
+            <p class="ink-3" style="margin:8px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:17px;color:#7A777D;">Ouvre la page de l’article : le connecteur Zotero y enregistre la référence. Le fichier joint au message importe tout le lot d’un coup.</p>
+          </td>
+        </tr>""".format(url=escape(url, quote=True))
+
+
+def _publication_html(publication, feedback_settings=None):
     title = escape(publication.title or publication.doi or "Publication sans titre")
     url = _publication_url(publication)
     escaped_url = escape(url, quote=True)
@@ -158,6 +216,8 @@ def _publication_html(publication):
         </tr>""".format(escape(publication.bellegarde_value))
 
     applications = _applications_block(publication.applications)
+    feedback = _feedback_block(publication, feedback_settings)
+    zotero = _zotero_block(publication)
 
     themes = ""
     if publication.themes:
@@ -241,6 +301,8 @@ def _publication_html(publication):
         {themes}
         {abstract}
         {cta}
+        {zotero}
+        {feedback}
         <tr>
           <td class="pad" style="padding:24px 34px 30px 34px;font-family:Arial,Helvetica,sans-serif;">
             {metadata}
@@ -266,11 +328,13 @@ def _publication_html(publication):
         themes=themes,
         abstract=abstract,
         cta=cta,
+        zotero=zotero,
+        feedback=feedback,
         metadata=metadata_markup,
     )
 
 
-def _section_html(priority, publications):
+def _section_html(priority, publications, feedback_settings=None):
     dot = "#6FCF97" if priority is PublicationPriority.HIGH else "#7A777D"
     return """
   <tr>
@@ -288,7 +352,10 @@ def _section_html(priority, publications):
   {articles}""".format(
         dot=dot,
         heading=escape(_SECTION_HEADINGS.get(priority, "Publications")),
-        articles="".join(_publication_html(publication) for publication in publications),
+        articles="".join(
+            _publication_html(publication, feedback_settings)
+            for publication in publications
+        ),
     )
 
 
@@ -303,7 +370,12 @@ def _empty_html(message):
   </tr>""".format(escape(message))
 
 
-def render_digest(publications, total_count=None, excluded_count=0):
+def render_digest(
+    publications,
+    total_count=None,
+    excluded_count=0,
+    feedback_settings=None,
+):
     publications = tuple(publications)
     now = _paris_now()
     date_label = "{} {} {}".format(now.day, _MONTHS_FR[now.month - 1], now.year)
@@ -325,7 +397,9 @@ def render_digest(publications, total_count=None, excluded_count=0):
                     if publication.priority is priority
                 )
                 if articles:
-                    sections.append(_section_html(priority, articles))
+                    sections.append(
+                        _section_html(priority, articles, feedback_settings)
+                    )
             body = "".join(sections)
         else:
             body = '<tr><td height="18" style="height:18px;line-height:18px;font-size:0;">&nbsp;</td></tr>'
@@ -448,12 +522,19 @@ def render_digest(publications, total_count=None, excluded_count=0):
     return html
 
 
-def write_digest(path, publications, total_count=None, excluded_count=0):
+def write_digest(
+    path,
+    publications,
+    total_count=None,
+    excluded_count=0,
+    feedback_settings=None,
+):
     with atomic_open(path, "w", encoding="utf-8") as stream:
         stream.write(
             render_digest(
                 publications,
                 total_count=total_count,
                 excluded_count=excluded_count,
+                feedback_settings=feedback_settings,
             )
         )

@@ -241,6 +241,9 @@ def format_backfill_daily(report):
 
 def format_daily_report(report):
     sync = report.get("sync") or {}
+    feedback = report.get("feedback") or {"enabled": False}
+    feedback_sync = feedback.get("sync") or {}
+    feedback_import = feedback.get("import") or {}
     pipeline = report.get("pipeline") or {}
     input_tokens = int(pipeline.get("ai_input_tokens") or 0)
     output_tokens = int(pipeline.get("ai_output_tokens") or 0)
@@ -248,6 +251,7 @@ def format_daily_report(report):
         report.get("warnings"),
         sync.get("warnings"),
         pipeline.get("warnings"),
+        feedback_import.get("warnings"),
     )
     errors = _unique_messages(
         report.get("errors"),
@@ -272,6 +276,16 @@ def format_daily_report(report):
         _row("Messages disponibles", sync.get("messages_available") or 0),
         _row("Messages téléchargés", sync.get("messages_downloaded") or 0),
         _row("Messages déjà présents", sync.get("messages_existing") or 0),
+        "",
+        "FEEDBACK",
+        "--------",
+        _row("Activé", "oui" if feedback.get("enabled") else "non"),
+        _row(
+            "Dossier de validation",
+            feedback_sync.get("folder") or "non renseigné",
+        ),
+        _row("Validations importées", feedback_import.get("accepted") or 0),
+        _row("Validations rejetées", feedback_import.get("rejected") or 0),
         "",
         "TRAITEMENT",
         "----------",

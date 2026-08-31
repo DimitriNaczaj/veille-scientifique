@@ -51,6 +51,8 @@ Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque front
 37. En tant qu’exploitant du NAS, je veux enrichir uniquement les publications candidates du profil choisi, afin de ne pas solliciter inutilement Crossref et les éditeurs.
 38. En tant que consultant Bellegarde, je veux comparer les profils et contrôler un échantillon CSV de leurs candidats sans IA, afin d’ajuster le niveau de bruit avant toute dépense.
 39. En tant que consultant Bellegarde, je veux écarter localement les corrections, sommaires et emplois manifestement non humains des termes comportementaux, afin de ne pas enrichir ni analyser des faux positifs structurels.
+40. En tant que consultant Bellegarde, je veux requalifier chaque article retenu en « Pépite », « Éventuellement » ou « Écarté » depuis le digest, afin de constituer progressivement un corpus de décisions humaines sans réécrire l’analyse IA initiale.
+41. En tant qu’exploitant du NAS, je veux que seule une validation envoyée depuis l’adresse autorisée et munie d’un jeton signé soit enregistrée, afin qu’un lien modifié ou un message tiers ne pollue pas le corpus.
 
 ## Implementation Decisions
 
@@ -94,6 +96,8 @@ Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque front
 - Le fournisseur IA par défaut utilise l’API Responses d’OpenAI, un modèle économique configurable, `store=false` et des Structured Outputs stricts. La clé vient uniquement d’une variable d’environnement.
 - L’analyse IA produit cinq sous-notes discrètes, des drapeaux méthodologiques, un résumé français concis, l’intérêt pour Bellegarde, des applications et des thèmes. Le programme calcule le total, applique les exclusions et plafonds puis détermine la pertinence et la priorité. Les sous-notes et règles appliquées sont enregistrées par identité de publication et version de modèle/prompt.
 - Un travail dont les seuls résultats principaux portent sur des symptômes, diagnostics, biomarqueurs, paramètres physiologiques, affects, relaxation ou bien-être reste hors périmètre s’il ne mesure aucun comportement, aucune décision, aucune perception ni action collective. Sa robustesse, sa taille ou son statut de méta-analyse ne peuvent pas le rendre pertinent.
+- Chaque article retenu comporte trois liens `mailto:` signés pour le requalifier. Le clic prépare un message ; seul son envoi constitue la validation. La commande quotidienne synchronise le dossier feedback en lecture seule, vérifie l’expéditeur autorisé, la qualification et la signature HMAC, puis conserve l’événement dans une table append-only distincte des évaluations IA.
+- Une nouvelle validation devient la qualification humaine courante de la publication sans supprimer les validations antérieures. Un export CSV joint chaque événement au dernier classement IA disponible et sert de corpus de calibration ; aucune modification automatique du prompt n’est déclenchée par un feedback isolé.
 - Sans clé ou lorsque l’IA est désactivée, le digest utilise la décision du préfiltre et l’abstract disponible ; cette dégradation est signalée dans le rapport.
 - Le digest contient une partie texte et une partie HTML. L’adresse destinataire est obligatoire pour un envoi réel et distincte du destinataire de test.
 - Une erreur d’enrichissement ou d’IA laisse la publication concernée en attente. Les exclusions évaluées et les articles envoyés sont marqués traités seulement après la réussite de la livraison globale.

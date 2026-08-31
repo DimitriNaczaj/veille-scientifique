@@ -441,3 +441,30 @@ La consigne `bellegarde-v5.1` ajoute le drapeau auditable
 dure, indépendamment du total brut. Le test de régression reproduit les sous-notes
 du pilote — 20 + 25 + 20 + 15 + 8 = 88 — puis vérifie que la note effective est
 plafonnée à 54 et la publication classée `excluded`.
+
+## Boucle de retour et historique (31 août 2026)
+
+Le digest porte désormais, pour chaque article, trois boutons de
+requalification et un lien d’enregistrement bibliographique. Les
+requalifications reviennent par courriel signé, sont importées lors de
+l’exécution quotidienne, et alimentent le rapport `feedback-review`.
+
+Ce rapport confronte le verdict du modèle à celui du consultant, puis compare
+les notes de la grille v5 selon que la requalification a remonté ou abaissé le
+classement. Un critère dont la moyenne ne varie pas entre les deux sens
+d’erreur ne discrimine rien et doit être reformulé. Le rapport refuse de
+conclure sous trois corrections : une consigne réglée sur deux cas apprend ces
+cas, non la règle qui les gouverne — l’écueil mesuré le 27 août, où une
+révision réglée sur 34 articles atteignait 91 % sur eux et devait être validée
+sur 30 articles inconnus.
+
+Zotero n’expose aucun lien d’ajout depuis un courriel : son connecteur
+travaille dans le navigateur et son API web exige une clé personnelle et une
+requête POST. Le digest fournit donc les deux chemins qui fonctionnent — un
+fichier RIS joint, importable pour tout le lot, et un lien par article vers sa
+page.
+
+L’historique des digests conserve la catégorie et la note du jour de l’envoi.
+Une requalification ultérieure ne les réécrit pas, ce qu’un test vérifie
+explicitement : sans cela, relire une campagne passée donnerait le classement
+d’aujourd’hui et non celui qui avait été diffusé.

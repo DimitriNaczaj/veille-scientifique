@@ -109,8 +109,48 @@ CREATE TABLE IF NOT EXISTS backfill_budget_reservations (
     updated_at TEXT NOT NULL,
     UNIQUE(publication_identity, model, prompt_version)
 );
+
+CREATE TABLE IF NOT EXISTS publication_feedback_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_identity TEXT NOT NULL UNIQUE,
+    source_path TEXT NOT NULL,
+    sender TEXT NOT NULL,
+    received_at TEXT,
+    publication_identity TEXT REFERENCES publications(identity),
+    priority TEXT,
+    status TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    recorded_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_publication_feedback_identity
+ON publication_feedback_messages(publication_identity, id);
+
+CREATE TABLE IF NOT EXISTS digest_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    subject TEXT NOT NULL DEFAULT '',
+    recipient TEXT NOT NULL DEFAULT '',
+    output_path TEXT NOT NULL DEFAULT '',
+    sent INTEGER NOT NULL DEFAULT 0,
+    retained_count INTEGER NOT NULL DEFAULT 0,
+    total_count INTEGER NOT NULL DEFAULT 0,
+    sent_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS digest_run_articles (
+    run_id INTEGER NOT NULL REFERENCES digest_runs(id),
+    publication_identity TEXT NOT NULL REFERENCES publications(identity),
+    priority TEXT NOT NULL,
+    interest_score INTEGER NOT NULL DEFAULT 0,
+    position INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (run_id, publication_identity)
+);
+
+CREATE INDEX IF NOT EXISTS idx_digest_run_articles_publication
+ON digest_run_articles(publication_identity);
 """
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 12
 
 _AI_ASSESSMENT_RESULT_COLUMNS = (
     "relevant",
@@ -418,6 +458,243 @@ class Store:
         ).fetchone()
         return row is not None
 
+    def record_digest_run(
+        self,
+        kind,
+        publications,
+        subject="",
+        recipient="",
+        output_path="",
+        sent=False,
+        total_count=None,
+    ):
+        """Consigne un envoi de digest et les articles qu’il portait.
+
+        L’historique se lit ensuite sans rejouer le tri : il garde la trace de
+        ce qui a effectivement été diffusé, avec la catégorie attribuée le
+        jour de l’envoi, qu’une requalification ultérieure ne réécrit pas.
+        """
+        publications = tuple(publications)
+        with self.connection:
+            cursor = self.connection.execute(
+                "INSERT INTO digest_runs("
+                "kind, subject, recipient, output_path, sent, "
+                "retained_count, total_count, sent_at"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    kind,
+                    subject or "",
+                    recipient or "",
+                    str(output_path or ""),
+                    1 if sent else 0,
+                    len(publications),
+                    len(publications) if total_count is None else total_count,
+                    _utc_now(),
+                ),
+            )
+            run_id = cursor.lastrowid
+            self.connection.executemany(
+                "INSERT OR IGNORE INTO digest_run_articles("
+                "run_id, publication_identity, priority, interest_score, position"
+                ") VALUES (?, ?, ?, ?, ?)",
+                (
+                    (
+                        run_id,
+                        publication.identity,
+                        getattr(publication.priority, "value", str(publication.priority)),
+                        getattr(publication, "interest_score", 0) or 0,
+                        index,
+                    )
+                    for index, publication in enumerate(publications, 1)
+                ),
+            )
+        return run_id
+
+    def digest_history_runs(self, limit=200):
+        return tuple(
+            self.connection.execute(
+                "SELECT id, kind, subject, recipient, sent, retained_count, "
+                "total_count, sent_at FROM digest_runs "
+                "ORDER BY sent_at DESC, id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        )
+
+    def digest_history_articles(self, run_ids):
+        run_ids = tuple(run_ids)
+        if not run_ids:
+            return ()
+        placeholders = ",".join("?" for _ in run_ids)
+        return tuple(
+            self.connection.execute(
+                "SELECT a.run_id, a.priority, a.interest_score, a.position, "
+                "COALESCE(m.title, p.title, p.doi, p.identity), p.doi, "
+                "m.journal, m.published_date "
+                "FROM digest_run_articles a "
+                "JOIN publications p ON p.identity = a.publication_identity "
+                "LEFT JOIN publication_metadata m "
+                "ON m.publication_identity = a.publication_identity "
+                "WHERE a.run_id IN ({}) "
+                "ORDER BY a.run_id DESC, a.position".format(placeholders),
+                run_ids,
+            ).fetchall()
+        )
+
+    def has_publication(self, identity):
+        row = self.connection.execute(
+            "SELECT 1 FROM publications WHERE identity = ?", (identity,)
+        ).fetchone()
+        return row is not None
+
+    def has_feedback_message(self, message_identity):
+        row = self.connection.execute(
+            "SELECT 1 FROM publication_feedback_messages WHERE message_identity = ?",
+            (message_identity,),
+        ).fetchone()
+        return row is not None
+
+    def record_feedback_message(
+        self,
+        message_identity,
+        source_path,
+        sender,
+        status,
+        publication_identity=None,
+        priority=None,
+        reason="",
+        received_at=None,
+    ):
+        if status not in ("accepted", "rejected", "ignored"):
+            raise ValueError("Statut de feedback invalide.")
+        if status == "accepted" and priority not in ("high", "watch", "excluded"):
+            raise ValueError("Qualification de feedback invalide.")
+        with self.connection:
+            self.connection.execute(
+                "INSERT INTO publication_feedback_messages("
+                "message_identity, source_path, sender, received_at, "
+                "publication_identity, priority, status, reason, recorded_at"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    message_identity,
+                    str(source_path),
+                    sender,
+                    received_at,
+                    publication_identity,
+                    priority,
+                    status,
+                    reason,
+                    _utc_now(),
+                ),
+            )
+
+    def latest_publication_feedback(self, publication_identity):
+        row = self.connection.execute(
+            "SELECT id, priority, sender, received_at, recorded_at "
+            "FROM publication_feedback_messages "
+            "WHERE publication_identity = ? AND status = 'accepted' "
+            "ORDER BY id DESC LIMIT 1",
+            (publication_identity,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row[0],
+            "priority": row[1],
+            "sender": row[2],
+            "received_at": row[3],
+            "recorded_at": row[4],
+        }
+
+    def feedback_count(self):
+        return self.connection.execute(
+            "SELECT COUNT(*) FROM publication_feedback_messages "
+            "WHERE status = 'accepted'"
+        ).fetchone()[0]
+
+    def feedback_export_rows(self):
+        rows = self.connection.execute(
+            "SELECT f.id, f.publication_identity, "
+            "COALESCE(pm.title, p.title, ''), COALESCE(pm.abstract, ''), "
+            "COALESCE(a.priority, ''), COALESCE(a.model, ''), "
+            "COALESCE(a.prompt_version, ''), COALESCE(a.interest_score, ''), "
+            "COALESCE(a.classification_reason, ''), f.priority, f.sender, "
+            "COALESCE(f.received_at, ''), f.recorded_at "
+            "FROM publication_feedback_messages f "
+            "JOIN publications p ON p.identity = f.publication_identity "
+            "LEFT JOIN publication_metadata pm "
+            "ON pm.publication_identity = p.identity "
+            "LEFT JOIN publication_ai_assessments a ON a.rowid = ("
+            " SELECT a2.rowid FROM publication_ai_assessments a2 "
+            " WHERE a2.publication_identity = p.identity "
+            " ORDER BY a2.checked_at DESC, a2.rowid DESC LIMIT 1"
+            ") WHERE f.status = 'accepted' ORDER BY f.id"
+        ).fetchall()
+        fieldnames = (
+            "feedback_id",
+            "publication_identity",
+            "title",
+            "abstract",
+            "ai_priority",
+            "ai_model",
+            "ai_prompt_version",
+            "ai_interest_score",
+            "ai_classification_reason",
+            "user_priority",
+            "sender",
+            "received_at",
+            "recorded_at",
+        )
+        return tuple(dict(zip(fieldnames, row)) for row in rows)
+
+    def feedback_review_rows(self):
+        """Requalifications accompagnées de la grille de notation d’origine.
+
+        L’export CSV se limite au verdict ; la révision d’une consigne a besoin
+        des notes par critère, seules capables de dire *où* le modèle a dérapé
+        plutôt que de constater qu’il s’est trompé.
+        """
+        fieldnames = (
+            "feedback_id",
+            "publication_identity",
+            "title",
+            "journal",
+            "ai_priority",
+            "user_priority",
+            "prompt_version",
+            "interest_score",
+            "mission_fit_score",
+            "scientific_robustness_score",
+            "actionability_score",
+            "generalizability_score",
+            "novelty_score",
+            "evidence_quality",
+            "classification_reason",
+            "recorded_at",
+        )
+        rows = self.connection.execute(
+            "SELECT f.id, f.publication_identity, "
+            "COALESCE(pm.title, p.title, ''), COALESCE(pm.journal, ''), "
+            "COALESCE(a.priority, ''), f.priority, "
+            "COALESCE(a.prompt_version, ''), COALESCE(a.interest_score, 0), "
+            "COALESCE(a.mission_fit_score, 0), "
+            "COALESCE(a.scientific_robustness_score, 0), "
+            "COALESCE(a.actionability_score, 0), "
+            "COALESCE(a.generalizability_score, 0), "
+            "COALESCE(a.novelty_score, 0), "
+            "COALESCE(a.evidence_quality, ''), "
+            "COALESCE(a.classification_reason, ''), f.recorded_at "
+            "FROM publication_feedback_messages f "
+            "JOIN publications p ON p.identity = f.publication_identity "
+            "LEFT JOIN publication_metadata pm "
+            "ON pm.publication_identity = p.identity "
+            "LEFT JOIN publication_ai_assessments a ON a.rowid = ("
+            " SELECT a2.rowid FROM publication_ai_assessments a2 "
+            " WHERE a2.publication_identity = p.identity "
+            " ORDER BY a2.checked_at DESC, a2.rowid DESC LIMIT 1"
+            ") WHERE f.status = 'accepted' ORDER BY f.id"
+        ).fetchall()
+        return tuple(dict(zip(fieldnames, row)) for row in rows)
+
     def add_message(self, message, source_path, delivery_eligible=True):
         now = _utc_now()
         publications_added = 0
@@ -582,6 +859,11 @@ class Store:
         self.connection.execute(
             "DELETE FROM publication_ai_assessments WHERE publication_identity = ?",
             (provisional_identity,),
+        )
+        self.connection.execute(
+            "UPDATE publication_feedback_messages SET publication_identity = ? "
+            "WHERE publication_identity = ?",
+            (candidate.identity, provisional_identity),
         )
         reservations = self.connection.execute(
             "SELECT id, model, prompt_version, cost_upper_bound_usd, "

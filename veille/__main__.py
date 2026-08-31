@@ -18,6 +18,9 @@ from .campaign import (
     export_backfill_classification,
 )
 from .filtering import BehavioralScienceFilter
+from .feedback import export_feedback_csv, load_feedback_settings, run_feedback_import
+from .feedback_review import export_feedback_review
+from .history import export_digest_history
 from .imap_sync import run_imap_sync
 from .mbox_import import run_mbox_import
 from .mail_diagnostics import run_imap_diagnostic, run_smtp_diagnostic
@@ -116,6 +119,22 @@ def build_parser():
         help="Nombre maximal de messages téléchargés, 0 pour tous (défaut : 200)",
     )
     sync_imap.add_argument(
+        "--folder",
+        help="Remplacer le dossier IMAP configuré",
+    )
+    feedback_import = subparsers.add_parser(
+        "feedback-import",
+        help="Importer les courriels de validation déjà synchronisés",
+    )
+    feedback_import.add_argument("--config", required=True)
+    feedback_import.add_argument("--database", required=True)
+    feedback_export = subparsers.add_parser(
+        "feedback-export",
+        help="Exporter le corpus de requalifications en CSV",
+    )
+    feedback_export.add_argument("--database", required=True)
+    feedback_export.add_argument("--output", required=True)
+    sync_imap.add_argument(
         "--initial-mode",
         choices=("all", "latest"),
         default="all",
@@ -144,6 +163,26 @@ def build_parser():
     )
     set_elsevier_key.add_argument(
         "--secrets", required=True, help="Chemin du fichier secrets.env"
+    )
+    feedback_review = subparsers.add_parser(
+        "feedback-review",
+        help="Analyser les requalifications pour préparer la consigne suivante",
+    )
+    feedback_review.add_argument("--database", required=True, help="Chemin de la base SQLite")
+    feedback_review.add_argument("--output", required=True, help="Rapport HTML à écrire")
+    feedback_review.add_argument("--csv-output", help="Export CSV facultatif")
+    digest_history = subparsers.add_parser(
+        "digest-history",
+        help="Écrire un historique lisible des digests déjà envoyés",
+    )
+    digest_history.add_argument("--database", required=True, help="Chemin de la base SQLite")
+    digest_history.add_argument("--output", required=True, help="Page HTML à écrire")
+    digest_history.add_argument("--csv-output", help="Export CSV facultatif")
+    digest_history.add_argument(
+        "--limit",
+        type=int,
+        default=200,
+        help="Nombre maximum d’envois repris (1–5000, défaut 200)",
     )
     refresh = subparsers.add_parser(
         "refresh-abstracts",
@@ -177,6 +216,11 @@ def build_parser():
     daily.add_argument("--ai-limit", type=int, help="Remplacer la limite IA")
     daily.add_argument("--no-ai", action="store_true", help="Désactiver l’analyse IA")
     daily.add_argument("--no-send", action="store_true", help="Générer sans envoyer")
+    daily.add_argument(
+        "--no-feedback",
+        action="store_true",
+        help="Désactiver la synchronisation des validations",
+    )
     daily.add_argument(
         "--format",
         dest="report_format",
@@ -309,6 +353,7 @@ def main(
                 ai_limit=args.ai_limit,
                 no_ai=args.no_ai,
                 no_send=args.no_send,
+                no_feedback=args.no_feedback,
                 imap_factory=imap_factory,
                 smtp_factory=smtp_factory,
                 http_opener=http_opener,
@@ -322,7 +367,20 @@ def main(
                 limit=args.limit,
                 initial_mode=args.initial_mode,
                 client_factory=imap_factory,
+                folder=args.folder,
             )
+        elif args.command == "feedback-import":
+            settings = load_feedback_settings(args.config)
+            if settings is None:
+                raise ValueError("Le feedback est désactivé dans [feedback].")
+            report = run_feedback_import(
+                settings.inbox,
+                args.database,
+                authorized_sender=settings.authorized_sender,
+                token_secret=settings.token_secret,
+            )
+        elif args.command == "feedback-export":
+            report = export_feedback_csv(args.database, args.output)
         elif args.command == "test-smtp":
             report = run_smtp_diagnostic(
                 args.config,
@@ -335,6 +393,19 @@ def main(
             )
         elif args.command == "migrate-secrets":
             report = migrate_inline_mail_password(args.config, args.secrets)
+        elif args.command == "feedback-review":
+            report = export_feedback_review(
+                args.database,
+                args.output,
+                csv_output=args.csv_output,
+            )
+        elif args.command == "digest-history":
+            report = export_digest_history(
+                args.database,
+                args.output,
+                limit=args.limit,
+                csv_output=args.csv_output,
+            )
         elif args.command == "refresh-abstracts":
             report = refresh_missing_abstracts(
                 args.database,

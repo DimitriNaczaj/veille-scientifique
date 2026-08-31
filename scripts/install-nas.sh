@@ -340,6 +340,7 @@ mkdir -p \
   "$INSTALL_ROOT/data" \
   "$INSTALL_ROOT/out" \
   "$INSTALL_ROOT/import" \
+  "$INSTALL_ROOT/feedback-inbox" \
   "$INSTALL_ROOT/smoke"
 if [[ "$DOWNLOAD_MODE" == "public" ]]; then
   say "Projet public installé depuis GitHub ; aucun jeton n’a été demandé."
@@ -432,6 +433,24 @@ if ! grep -q '^\[elsevier\]$' "$CONFIG_PATH"; then
   } >> "$CONFIG_PATH"
   say "Section [elsevier] ajoutée ; la clé reste dans secrets.env."
 fi
+if ! grep -q '^\[feedback\]$' "$CONFIG_PATH"; then
+  FEEDBACK_RECIPIENT=$("$PYTHON_BIN" -c \
+    'import configparser, sys; c=configparser.ConfigParser(interpolation=None); c.read(sys.argv[1], encoding="utf-8"); print(c.get("imap", "username"))' \
+    "$CONFIG_PATH")
+  FEEDBACK_AUTHORIZED_SENDER=$("$PYTHON_BIN" -c \
+    'import configparser, sys; c=configparser.ConfigParser(interpolation=None); c.read(sys.argv[1], encoding="utf-8"); print(c.get("digest", "recipient"))' \
+    "$CONFIG_PATH")
+  {
+    printf '\n%s\n' '[feedback]' 'enabled = true'
+    printf 'recipient = %s\nauthorized_sender = %s\n' \
+      "$FEEDBACK_RECIPIENT" "$FEEDBACK_AUTHORIZED_SENDER"
+    printf '%s\n' 'folder = INBOX'
+    printf 'inbox = %s/feedback-inbox\noutput = %s/out/feedback.csv\n' \
+      "$INSTALL_ROOT" "$INSTALL_ROOT"
+    printf '%s\n' 'token_secret_env = SCIENCE_DIGEST_FEEDBACK_SECRET' 'sync_limit = 50'
+  } >> "$CONFIG_PATH"
+  say "Feedback par courriel activé pour $FEEDBACK_AUTHORIZED_SENDER."
+fi
 chmod 600 "$CONFIG_PATH"
 if [[ "$REUSE_CONFIG" == true ]]; then
   (
@@ -441,13 +460,22 @@ if [[ "$REUSE_CONFIG" == true ]]; then
       --secrets "$SECRETS_PATH"
   )
 fi
-[[ ! -f "$SECRETS_PATH" ]] || chmod 600 "$SECRETS_PATH"
+touch "$SECRETS_PATH"
+chmod 600 "$SECRETS_PATH"
+if ! grep -q '^SCIENCE_DIGEST_FEEDBACK_SECRET=' "$SECRETS_PATH"; then
+  FEEDBACK_SECRET=$("$PYTHON_BIN" -c 'import secrets; print(secrets.token_hex(32))')
+  printf 'SCIENCE_DIGEST_FEEDBACK_SECRET=%q\n' "$FEEDBACK_SECRET" >> "$SECRETS_PATH"
+  unset FEEDBACK_SECRET
+  say "Secret de signature du feedback généré localement."
+fi
 if [[ -f "$SECRETS_PATH" ]]; then
   # shellcheck disable=SC1090
   source "$SECRETS_PATH"
   export SCIENCE_DIGEST_MAIL_PASSWORD SCIENCE_DIGEST_SMTP_PASSWORD \
     OPENAI_API_KEY 2>/dev/null || true
   [ "${ELSEVIER_API_KEY+x}" = x ] && export ELSEVIER_API_KEY
+  [ "${SCIENCE_DIGEST_FEEDBACK_SECRET+x}" = x ] && \
+    export SCIENCE_DIGEST_FEEDBACK_SECRET
 fi
 say "Configuration et secrets privés écrits en mode 600. Aucun secret n’est envoyé à GitHub."
 
@@ -485,6 +513,7 @@ mkdir -p "$SMOKE_ROOT/inbox" "$SMOKE_ROOT/out"
     --enrichment-limit 1 \
     --ai-limit 0 \
     --no-ai \
+    --no-feedback \
     --no-send
 )
 [[ -f "$SMOKE_ROOT/out/digest.html" ]] || {

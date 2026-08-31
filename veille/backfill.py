@@ -17,6 +17,7 @@ from .elsevier import elsevier_client_from_config, pii_from_sciencedirect_url
 from .europepmc import europepmc_client_from_config
 from .openalex import openalex_client_from_config
 from .filtering import BehavioralScienceFilter
+from .feedback import load_feedback_settings
 from .mail_diagnostics import _load_config
 from .mbox_import import _validate_distinct_paths
 from .models import PublicationPriority
@@ -698,6 +699,7 @@ def run_backfill(
             selected,
             total_count=len(handled),
             excluded_count=len(handled) - len(selected),
+            feedback_settings=load_feedback_settings(config_path),
         )
         sender = None
         if not no_send:

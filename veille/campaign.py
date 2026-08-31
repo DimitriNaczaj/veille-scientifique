@@ -21,6 +21,7 @@ from .backfill import (
 )
 from .delivery import SMTPDigestSender
 from .digest import write_digest
+from .feedback import load_feedback_settings
 from .mail_diagnostics import _load_config
 from .mbox_import import _validate_distinct_paths
 from .models import PublicationPriority
@@ -668,6 +669,7 @@ def dispatch_backfill(
                 selected,
                 total_count=len(selected),
                 excluded_count=0,
+                feedback_settings=load_feedback_settings(config_path),
             )
             if not no_send:
                 sender = SMTPDigestSender(
@@ -678,6 +680,14 @@ def dispatch_backfill(
                 sender.send(output, selected)
                 if sender.sent:
                     store.mark_delivered(selected)
+            store.record_digest_run(
+                "rattrapage",
+                selected,
+                recipient=getattr(sender, "recipient", "") or "",
+                output_path=output,
+                sent=bool(getattr(sender, "sent", False)),
+                total_count=len(selected),
+            )
         rows_after = _classification_rows(
             store,
             plan["candidate_identities"],

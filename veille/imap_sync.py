@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 from .atomic import atomic_open
@@ -49,6 +50,7 @@ def run_imap_sync(
     limit=200,
     initial_mode="all",
     client_factory=None,
+    folder=None,
 ):
     if (
         isinstance(limit, bool)
@@ -62,6 +64,11 @@ def run_imap_sync(
     if initial_mode not in ("all", "latest"):
         raise ValueError("Le mode initial IMAP doit être all ou latest.")
     settings = load_imap_settings(config_path)
+    if folder is not None:
+        folder = str(folder).strip()
+        if not folder:
+            raise ValueError("Le dossier IMAP ne peut pas être vide.")
+        settings = replace(settings, folder=folder)
     inbox_path = Path(inbox)
     inbox_path.mkdir(parents=True, exist_ok=True)
     client = None
