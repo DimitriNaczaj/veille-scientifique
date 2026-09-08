@@ -243,7 +243,9 @@ def _plain_body(message):
 
 
 def _field(body, name):
-    match = re.search(r"^{}=([^\r\n]+)$".format(re.escape(name)), body, re.MULTILINE)
+    match = re.search(
+        r"^{}=([^\r\n]+)\r?$".format(re.escape(name)), body, re.MULTILINE
+    )
     return match.group(1).strip() if match else ""
 
 

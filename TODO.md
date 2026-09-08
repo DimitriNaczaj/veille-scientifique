@@ -3,6 +3,10 @@
 - [ ] Ajouter, pour chaque auteur, un lien vers sa recherche Google Scholar.
 - [x] Remplacer la note IA globale par une grille de critères explicites et auditables.
 
+## Livré en version 0.14.2
+
+- [x] Accepter les fins de ligne SMTP réelles dans les courriels de feedback.
+
 ## Planifié — digest adaptatif
 
 - [ ] Ajouter un motif facultatif aux trois requalifications.

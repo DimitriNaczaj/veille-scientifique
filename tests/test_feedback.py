@@ -131,6 +131,33 @@ class FeedbackTests(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_imports_validation_with_smtp_crlf_line_endings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "feedback"
+            inbox.mkdir()
+            database = root / "veille.sqlite"
+            add_publication(database)
+            message_path = inbox / "feedback.eml"
+            validation_email(
+                message_path,
+                "high",
+                create_feedback_token(IDENTITY, SECRET),
+            )
+            message_path.write_bytes(
+                message_path.read_bytes().replace(b"\n", b"\r\n")
+            )
+
+            report = run_feedback_import(
+                inbox,
+                database,
+                authorized_sender="consultant@example.org",
+                token_secret=SECRET,
+            )
+
+            self.assertEqual(report.accepted, 1)
+            self.assertEqual(report.rejected, 0)
+
     def test_imports_imap_messages_in_numeric_uid_order(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -1,5 +1,11 @@
 # Validation sur le corpus local
 
+## Version 0.14.2 — 8 septembre 2026
+
+- 220 tests automatisés réussis sous Python 3.14 ;
+- les champs signés des courriels de feedback sont reconnus avec les fins de
+  ligne SMTP `CRLF` réellement produites par les clients de messagerie.
+
 ## Version 0.14.1 — 1er septembre 2026
 
 - 219 tests automatisés réussis sous Python 3.14 ;
