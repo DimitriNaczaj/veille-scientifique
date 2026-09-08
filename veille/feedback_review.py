@@ -23,7 +23,7 @@ CRITERIA = (
     ("generalizability_score", "Généralisation"),
     ("novelty_score", "Nouveauté"),
 )
-MINIMUM_FOR_TREND = 3
+MINIMUM_PER_DIRECTION = 3
 
 
 def _label(priority):
@@ -85,7 +85,10 @@ def analyse_feedback(database):
     agreement = (
         (counts["confirmé"] / len(rows)) if rows else None
     )
-    enough = len(corrected) >= MINIMUM_FOR_TREND
+    enough = (
+        counts["remonté"] >= MINIMUM_PER_DIRECTION
+        and counts["abaissé"] >= MINIMUM_PER_DIRECTION
+    )
     return {
         "rows": rows,
         "corrected": corrected,
@@ -161,8 +164,11 @@ def _matrix_html(matrix):
 def _criteria_html(analysis):
     if not analysis["sufficient"]:
         return (
-            '<p class="empty">Moins de {} requalifications : les moyennes par '
-            "critère ne seraient pas interprétables.</p>".format(MINIMUM_FOR_TREND)
+            '<p class="empty">Il faut au moins {} articles remontés et {} articles '
+            "abaissés : les moyennes par critère ne seraient pas encore "
+            "interprétables.</p>".format(
+                MINIMUM_PER_DIRECTION, MINIMUM_PER_DIRECTION
+            )
         )
     rows = []
     for item in sorted(
@@ -294,9 +300,10 @@ def render_review(analysis):
     if analysis["total"] and not analysis["sufficient"]:
         guidance = (
             '<p class="note">Trop peu de corrections pour conclure. '
-            "Attendez d’en réunir au moins {} avant de réécrire la consigne : "
+            "Attendez au moins {} articles remontés et autant d’articles abaissés "
+            "avant de réécrire la consigne : "
             "une révision réglée sur deux ou trois cas apprend ces cas, pas la "
-            "règle qui les gouverne.</p>".format(MINIMUM_FOR_TREND)
+            "règle qui les gouverne.</p>".format(MINIMUM_PER_DIRECTION)
         )
     return """<!doctype html>
 <html lang="fr">

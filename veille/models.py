@@ -89,6 +89,8 @@ class NewPublication:
     interest_score: int = 0
     evidence_quality: Optional[str] = None
     classification_reason: Optional[str] = None
+    ai_model: Optional[str] = None
+    ai_prompt_version: Optional[str] = None
 
 
 @dataclass(frozen=True)

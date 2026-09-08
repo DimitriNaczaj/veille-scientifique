@@ -29,6 +29,7 @@ class DigestDeliverySettings:
     recipient: str
     from_address: str
     subject_prefix: str
+    attach_ris: bool
 
 
 def load_digest_delivery_settings(path):
@@ -43,6 +44,10 @@ def load_digest_delivery_settings(path):
         raise ValueError(
             "Le destinataire du digest doit être distinct du destinataire de test SMTP."
         )
+    try:
+        attach_ris = config.getboolean("digest", "attach_ris", fallback=False)
+    except ValueError:
+        raise ValueError("Option digest.attach_ris invalide.") from None
     return DigestDeliverySettings(
         recipient=recipient,
         from_address=(
@@ -57,6 +62,7 @@ def load_digest_delivery_settings(path):
             ).strip()
             or "Veille scientifique Bellegarde"
         ),
+        attach_ris=attach_ris,
     )
 
 
@@ -92,6 +98,10 @@ def _plain_digest(publications, feedback_settings=None):
                             publication.title,
                             priority,
                             feedback_settings,
+                            original_priority=publication.priority,
+                            original_interest_score=publication.interest_score,
+                            ai_model=publication.ai_model,
+                            ai_prompt_version=publication.ai_prompt_version,
                         ),
                     )
                 )
@@ -153,7 +163,7 @@ class SMTPDigestSender:
         # Le fichier RIS suit le digest : c’est le seul geste qui importe
         # réellement tout le lot dans Zotero, le connecteur ne travaillant
         # que depuis un navigateur.
-        ris = render_ris(publications)
+        ris = render_ris(publications) if digest.attach_ris else ""
         if ris:
             maintype, subtype = RIS_MEDIA_TYPE
             message.add_attachment(

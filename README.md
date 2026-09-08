@@ -514,8 +514,7 @@ chmod 600 secrets.env
 
 1. évaluation manuelle des faux positifs et faux négatifs sur un échantillon annoté ;
 2. retours « utile / inutile » dans le digest ;
-3. export automatique vers Zotero ;
-4. tableau de bord facultatif de supervision.
+3. tableau de bord facultatif de supervision.
 
 ## Reprise des résumés manquants
 
@@ -560,11 +559,13 @@ quels critères de la grille séparent réellement les deux sens d’erreur :
 
 Un critère dont la note ne varie pas selon que l’article a été remonté ou
 abaissé ne discrimine rien : c’est lui qu’il faut reformuler dans la consigne.
-Le rapport refuse de conclure sous trois corrections.
+Le rapport refuse de conclure avant d’avoir trois articles distincts remontés
+et trois articles distincts abaissés. Seule la dernière décision par article
+alimente l’analyse ; l’historique complet reste exporté pour l’audit.
 
 ## Références bibliographiques
 
-Chaque digest porte un fichier `.ris` en pièce jointe, importable d’un seul
-geste dans Zotero. Le bouton « Ajouter à Zotero » de chaque article ouvre sa
-page, où le connecteur enregistre la référence : Zotero n’expose aucun lien
-d’ajout utilisable depuis un courriel.
+Le bouton « Ajouter à Zotero » de chaque article ouvre sa page, où le
+connecteur enregistre la référence. Une pièce jointe `.ris`, importable d’un
+seul geste dans Zotero, peut être activée avec `digest.attach_ris = true` ;
+elle est désactivée par défaut pour garder les courriels légers.

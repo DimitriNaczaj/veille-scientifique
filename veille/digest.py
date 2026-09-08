@@ -118,6 +118,10 @@ def _feedback_block(publication, settings):
                 publication.title,
                 priority,
                 settings,
+                original_priority=publication.priority,
+                original_interest_score=publication.interest_score,
+                ai_model=publication.ai_model,
+                ai_prompt_version=publication.ai_prompt_version,
             ),
             quote=True,
         )
@@ -145,7 +149,7 @@ def _zotero_block(publication):
     Zotero n’a pas de lien « ajouter » utilisable depuis un courriel : son
     connecteur enregistre depuis une page ouverte dans le navigateur. Le lien
     mène donc à la page de l’article, où un clic sur le connecteur suffit ; le
-    fichier RIS joint au message reste la voie pour importer tout le lot.
+    fichier RIS, lorsqu’il est activé, permet d’importer tout le lot.
     """
     url = _publication_url(publication)
     if not url:
@@ -154,7 +158,7 @@ def _zotero_block(publication):
         <tr>
           <td class="pad" style="padding:18px 34px 0 34px;font-family:Arial,Helvetica,sans-serif;">
             <a href="{url}" style="display:inline-block;padding:10px 16px;border-radius:999px;background:#EDEBF5;color:#3B3560;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:16px;font-weight:bold;text-decoration:none;white-space:nowrap;">Ajouter à Zotero</a>
-            <p class="ink-3" style="margin:8px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:17px;color:#7A777D;">Ouvre la page de l’article : le connecteur Zotero y enregistre la référence. Le fichier joint au message importe tout le lot d’un coup.</p>
+            <p class="ink-3" style="margin:8px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:17px;color:#7A777D;">Ouvre la page de l’article : le connecteur Zotero y enregistre la référence. Selon la configuration, un fichier RIS joint permet aussi d’importer tout le lot.</p>
           </td>
         </tr>""".format(url=escape(url, quote=True))
 

@@ -118,6 +118,10 @@ CREATE TABLE IF NOT EXISTS publication_feedback_messages (
     received_at TEXT,
     publication_identity TEXT REFERENCES publications(identity),
     priority TEXT,
+    original_priority TEXT,
+    original_interest_score INTEGER,
+    ai_model TEXT,
+    ai_prompt_version TEXT,
     status TEXT NOT NULL,
     reason TEXT NOT NULL DEFAULT '',
     recorded_at TEXT NOT NULL
@@ -150,7 +154,7 @@ CREATE TABLE IF NOT EXISTS digest_run_articles (
 CREATE INDEX IF NOT EXISTS idx_digest_run_articles_publication
 ON digest_run_articles(publication_identity);
 """
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 _AI_ASSESSMENT_RESULT_COLUMNS = (
     "relevant",
@@ -348,6 +352,24 @@ class Store:
             if column not in assessment_columns:
                 self.connection.execute(
                     "ALTER TABLE publication_ai_assessments ADD COLUMN "
+                    "{} {}".format(column, definition)
+                )
+        feedback_columns = {
+            row[1]
+            for row in self.connection.execute(
+                "PRAGMA table_info(publication_feedback_messages)"
+            )
+        }
+        feedback_snapshot_columns = (
+            ("original_priority", "TEXT"),
+            ("original_interest_score", "INTEGER"),
+            ("ai_model", "TEXT"),
+            ("ai_prompt_version", "TEXT"),
+        )
+        for column, definition in feedback_snapshot_columns:
+            if column not in feedback_columns:
+                self.connection.execute(
+                    "ALTER TABLE publication_feedback_messages ADD COLUMN "
                     "{} {}".format(column, definition)
                 )
         # Les alias de titre ont été introduits en version 8. Une migration
@@ -563,6 +585,10 @@ class Store:
         priority=None,
         reason="",
         received_at=None,
+        original_priority=None,
+        original_interest_score=None,
+        ai_model=None,
+        ai_prompt_version=None,
     ):
         if status not in ("accepted", "rejected", "ignored"):
             raise ValueError("Statut de feedback invalide.")
@@ -572,8 +598,10 @@ class Store:
             self.connection.execute(
                 "INSERT INTO publication_feedback_messages("
                 "message_identity, source_path, sender, received_at, "
-                "publication_identity, priority, status, reason, recorded_at"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "publication_identity, priority, original_priority, "
+                "original_interest_score, ai_model, ai_prompt_version, "
+                "status, reason, recorded_at"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     message_identity,
                     str(source_path),
@@ -581,6 +609,10 @@ class Store:
                     received_at,
                     publication_identity,
                     priority,
+                    original_priority,
+                    original_interest_score,
+                    ai_model,
+                    ai_prompt_version,
                     status,
                     reason,
                     _utc_now(),
@@ -615,8 +647,10 @@ class Store:
         rows = self.connection.execute(
             "SELECT f.id, f.publication_identity, "
             "COALESCE(pm.title, p.title, ''), COALESCE(pm.abstract, ''), "
-            "COALESCE(a.priority, ''), COALESCE(a.model, ''), "
-            "COALESCE(a.prompt_version, ''), COALESCE(a.interest_score, ''), "
+            "COALESCE(f.original_priority, a.priority, ''), "
+            "COALESCE(f.ai_model, a.model, ''), "
+            "COALESCE(f.ai_prompt_version, a.prompt_version, ''), "
+            "COALESCE(f.original_interest_score, a.interest_score, ''), "
             "COALESCE(a.classification_reason, ''), f.priority, f.sender, "
             "COALESCE(f.received_at, ''), f.recorded_at "
             "FROM publication_feedback_messages f "
@@ -625,7 +659,9 @@ class Store:
             "ON pm.publication_identity = p.identity "
             "LEFT JOIN publication_ai_assessments a ON a.rowid = ("
             " SELECT a2.rowid FROM publication_ai_assessments a2 "
-            " WHERE a2.publication_identity = p.identity "
+            " WHERE a2.publication_identity = p.identity AND ("
+            " f.ai_model IS NULL OR (a2.model = f.ai_model "
+            " AND a2.prompt_version = f.ai_prompt_version)) "
             " ORDER BY a2.checked_at DESC, a2.rowid DESC LIMIT 1"
             ") WHERE f.status = 'accepted' ORDER BY f.id"
         ).fetchall()
@@ -674,8 +710,9 @@ class Store:
         rows = self.connection.execute(
             "SELECT f.id, f.publication_identity, "
             "COALESCE(pm.title, p.title, ''), COALESCE(pm.journal, ''), "
-            "COALESCE(a.priority, ''), f.priority, "
-            "COALESCE(a.prompt_version, ''), COALESCE(a.interest_score, 0), "
+            "COALESCE(f.original_priority, a.priority, ''), f.priority, "
+            "COALESCE(f.ai_prompt_version, a.prompt_version, ''), "
+            "COALESCE(f.original_interest_score, a.interest_score, 0), "
             "COALESCE(a.mission_fit_score, 0), "
             "COALESCE(a.scientific_robustness_score, 0), "
             "COALESCE(a.actionability_score, 0), "
@@ -689,9 +726,14 @@ class Store:
             "ON pm.publication_identity = p.identity "
             "LEFT JOIN publication_ai_assessments a ON a.rowid = ("
             " SELECT a2.rowid FROM publication_ai_assessments a2 "
-            " WHERE a2.publication_identity = p.identity "
+            " WHERE a2.publication_identity = p.identity AND ("
+            " f.ai_model IS NULL OR (a2.model = f.ai_model "
+            " AND a2.prompt_version = f.ai_prompt_version)) "
             " ORDER BY a2.checked_at DESC, a2.rowid DESC LIMIT 1"
-            ") WHERE f.status = 'accepted' ORDER BY f.id"
+            ") WHERE f.status = 'accepted' AND f.id = ("
+            " SELECT MAX(f2.id) FROM publication_feedback_messages f2 "
+            " WHERE f2.publication_identity = f.publication_identity "
+            " AND f2.status = 'accepted') ORDER BY f.id"
         ).fetchall()
         return tuple(dict(zip(fieldnames, row)) for row in rows)
 
@@ -864,6 +906,17 @@ class Store:
             "UPDATE publication_feedback_messages SET publication_identity = ? "
             "WHERE publication_identity = ?",
             (candidate.identity, provisional_identity),
+        )
+        self.connection.execute(
+            "INSERT OR IGNORE INTO digest_run_articles("
+            "run_id, publication_identity, priority, interest_score, position"
+            ") SELECT run_id, ?, priority, interest_score, position "
+            "FROM digest_run_articles WHERE publication_identity = ?",
+            (candidate.identity, provisional_identity),
+        )
+        self.connection.execute(
+            "DELETE FROM digest_run_articles WHERE publication_identity = ?",
+            (provisional_identity,),
         )
         reservations = self.connection.execute(
             "SELECT id, model, prompt_version, cost_upper_bound_usd, "

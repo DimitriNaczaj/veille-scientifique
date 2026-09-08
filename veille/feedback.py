@@ -2,6 +2,7 @@ import base64
 import csv
 import hashlib
 import hmac
+import json
 import re
 from dataclasses import dataclass
 from email import policy
@@ -28,6 +29,7 @@ _PRIORITY_LABELS = {
     PublicationPriority.WATCH: "Éventuellement",
     PublicationPriority.EXCLUDED: "Écarté",
 }
+_IMAP_MESSAGE_NAME = re.compile(r"^imap-(\d+)-(\d+)\.eml$")
 
 
 @dataclass(frozen=True)
@@ -104,19 +106,37 @@ def load_feedback_settings(path):
     )
 
 
-def create_feedback_token(publication_identity, secret):
+def create_feedback_token(
+    publication_identity,
+    secret,
+    original_priority=None,
+    original_interest_score=None,
+    ai_model=None,
+    ai_prompt_version=None,
+):
     if not publication_identity or not secret:
         raise ValueError("L’identité et le secret feedback sont obligatoires.")
-    payload = base64.urlsafe_b64encode(
-        publication_identity.encode("utf-8")
-    ).decode("ascii").rstrip("=")
+    token_data = {
+        "v": 2,
+        "publication_identity": publication_identity,
+        "original_priority": original_priority,
+        "original_interest_score": original_interest_score,
+        "ai_model": ai_model,
+        "ai_prompt_version": ai_prompt_version,
+    }
+    serialized = json.dumps(
+        token_data, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    )
+    payload = base64.urlsafe_b64encode(serialized.encode("utf-8")).decode(
+        "ascii"
+    ).rstrip("=")
     signature = hmac.new(
         secret.encode("utf-8"), payload.encode("ascii"), hashlib.sha256
     ).hexdigest()
     return "{}.{}".format(payload, signature)
 
 
-def _identity_from_token(token, secret):
+def _feedback_from_token(token, secret):
     try:
         payload, supplied_signature = token.rsplit(".", 1)
     except ValueError:
@@ -128,15 +148,51 @@ def _identity_from_token(token, secret):
         raise ValueError("Signature du feedback invalide.")
     try:
         padding = "=" * (-len(payload) % 4)
-        identity = base64.urlsafe_b64decode(payload + padding).decode("utf-8")
+        decoded = base64.urlsafe_b64decode(payload + padding).decode("utf-8")
     except (ValueError, UnicodeError):
         raise ValueError("Identité du feedback invalide.") from None
-    if not identity:
+    if not decoded:
         raise ValueError("Identité du feedback vide.")
-    return identity
+    if not decoded.startswith("{"):
+        return {
+            "publication_identity": decoded,
+            "original_priority": None,
+            "original_interest_score": None,
+            "ai_model": None,
+            "ai_prompt_version": None,
+        }
+    try:
+        data = json.loads(decoded)
+    except (TypeError, ValueError):
+        raise ValueError("Contenu du feedback invalide.") from None
+    if data.get("v") != 2 or not data.get("publication_identity"):
+        raise ValueError("Contenu du feedback invalide.")
+    if data.get("original_priority") not in (
+        None,
+        "unfiltered",
+        "high",
+        "watch",
+        "excluded",
+    ):
+        raise ValueError("Classement d’origine invalide.")
+    return data
 
 
-def feedback_mailto(publication_identity, title, priority, settings):
+def _identity_from_token(token, secret):
+    """Compatibilité avec les appelants qui ne demandent que l’identité."""
+    return _feedback_from_token(token, secret)["publication_identity"]
+
+
+def feedback_mailto(
+    publication_identity,
+    title,
+    priority,
+    settings,
+    original_priority=None,
+    original_interest_score=None,
+    ai_model=None,
+    ai_prompt_version=None,
+):
     if priority not in FEEDBACK_PRIORITIES:
         raise ValueError("Qualification de feedback invalide.")
     label = _PRIORITY_LABELS[priority]
@@ -152,7 +208,16 @@ def feedback_mailto(publication_identity, title, priority, settings):
             FEEDBACK_MARKER,
             "choice={}".format(priority.value),
             "token={}".format(
-                create_feedback_token(publication_identity, settings.token_secret)
+                create_feedback_token(
+                    publication_identity,
+                    settings.token_secret,
+                    original_priority=(
+                        getattr(original_priority, "value", original_priority)
+                    ),
+                    original_interest_score=original_interest_score,
+                    ai_model=ai_model,
+                    ai_prompt_version=ai_prompt_version,
+                )
             ),
             "",
         )
@@ -189,6 +254,13 @@ def _message_identity(message, raw):
     return "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
+def _feedback_message_sort_key(path):
+    match = _IMAP_MESSAGE_NAME.match(path.name)
+    if match:
+        return (0, int(match.group(1)), int(match.group(2)), path.name)
+    return (1, 0, 0, path.name)
+
+
 def run_feedback_import(inbox, database, authorized_sender, token_secret):
     inbox_path = Path(inbox)
     if not inbox_path.exists() or not inbox_path.is_dir():
@@ -200,16 +272,38 @@ def run_feedback_import(inbox, database, authorized_sender, token_secret):
     warnings = []
     store = Store(database)
     try:
-        for message_path in sorted(inbox_path.glob("*.eml")):
-            raw = message_path.read_bytes()
-            message = BytesParser(policy=policy.default).parsebytes(raw)
-            identity = _message_identity(message, raw)
+        for message_path in sorted(
+            inbox_path.glob("*.eml"), key=_feedback_message_sort_key
+        ):
+            raw = b""
+            try:
+                raw = message_path.read_bytes()
+                message = BytesParser(policy=policy.default).parsebytes(raw)
+                identity = _message_identity(message, raw)
+                sender = parseaddr(str(message.get("From") or ""))[1].strip()
+                body = _plain_body(message)
+                subject = str(message.get("Subject") or "")
+            except Exception as error:
+                identity = "sha256:" + hashlib.sha256(
+                    raw or str(message_path).encode("utf-8")
+                ).hexdigest()
+                if store.has_feedback_message(identity):
+                    already_processed += 1
+                    continue
+                reason = "Message illisible : {}".format(error)
+                store.record_feedback_message(
+                    identity,
+                    message_path,
+                    "",
+                    status="rejected",
+                    reason=reason,
+                )
+                rejected += 1
+                warnings.append("{}: {}".format(message_path.name, reason))
+                continue
             if store.has_feedback_message(identity):
                 already_processed += 1
                 continue
-            sender = parseaddr(str(message.get("From") or ""))[1].strip()
-            body = _plain_body(message)
-            subject = str(message.get("Subject") or "")
             is_feedback = FEEDBACK_MARKER in body or FEEDBACK_SUBJECT in subject
             if not is_feedback:
                 store.record_feedback_message(
@@ -228,7 +322,8 @@ def run_feedback_import(inbox, database, authorized_sender, token_secret):
                 if choice not in {priority.value for priority in FEEDBACK_PRIORITIES}:
                     raise ValueError("Qualification de feedback invalide.")
                 token = _field(body, "token")
-                publication_identity = _identity_from_token(token, token_secret)
+                token_data = _feedback_from_token(token, token_secret)
+                publication_identity = token_data["publication_identity"]
                 if not store.has_publication(publication_identity):
                     raise ValueError("Publication inconnue : {}.".format(publication_identity))
                 store.record_feedback_message(
@@ -239,6 +334,12 @@ def run_feedback_import(inbox, database, authorized_sender, token_secret):
                     publication_identity=publication_identity,
                     priority=choice,
                     received_at=str(message.get("Date") or "").strip() or None,
+                    original_priority=token_data.get("original_priority"),
+                    original_interest_score=token_data.get(
+                        "original_interest_score"
+                    ),
+                    ai_model=token_data.get("ai_model"),
+                    ai_prompt_version=token_data.get("ai_prompt_version"),
                 )
                 accepted += 1
             except ValueError as error:

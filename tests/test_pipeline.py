@@ -11,8 +11,8 @@ from urllib.parse import quote, urlencode
 from veille.mail_parser import normalize_doi, parse_message
 from veille.digest import render_digest
 from veille.feedback import FeedbackSettings
-from veille.models import NewPublication, PublicationPriority
-from veille.pipeline import run_pipeline
+from veille.models import AIAnalysis, NewPublication, PublicationPriority
+from veille.pipeline import _apply_ai_analysis, run_pipeline
 from veille.storage import Store
 
 
@@ -51,6 +51,38 @@ class NormalizeDoiTests(unittest.TestCase):
 
 
 class PipelineTests(unittest.TestCase):
+    def test_applied_analysis_keeps_scores_and_model_provenance(self):
+        publication = NewPublication(
+            identity="doi:10.1234/scored",
+            doi="10.1234/scored",
+            title="Scored article",
+            url=None,
+            source_subject="Newsletter",
+            source_sender="publisher@example.org",
+        )
+        analysis = AIAnalysis(
+            relevant=True,
+            priority=PublicationPriority.HIGH,
+            summary_fr="Résumé",
+            bellegarde_value="Valeur",
+            applications=(),
+            themes=(),
+            input_tokens=10,
+            output_tokens=5,
+            model="gpt-5.6-luna",
+            prompt_version="bellegarde-v5.1",
+            interest_score=88,
+            evidence_quality="strong",
+            classification_reason="Très pertinent",
+        )
+
+        result = _apply_ai_analysis(publication, analysis)
+
+        self.assertEqual(result.interest_score, 88)
+        self.assertEqual(result.evidence_quality, "strong")
+        self.assertEqual(result.classification_reason, "Très pertinent")
+        self.assertEqual(result.ai_model, "gpt-5.6-luna")
+        self.assertEqual(result.ai_prompt_version, "bellegarde-v5.1")
     def test_extracts_canonical_nature_url_from_legacy_aws_tracking_link(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "legacy-nature.eml"

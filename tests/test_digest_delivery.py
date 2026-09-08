@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from veille.citations import RIS_FILENAME
 from veille.delivery import SMTPDigestSender, load_digest_delivery_settings
 from veille.models import NewPublication, PublicationPriority
 
@@ -37,7 +38,7 @@ class FakeSMTP:
         return 221, b"bye"
 
 
-def write_config(path):
+def write_config(path, attach_ris=False):
     Path(path).write_text(
         """[imap]
 host = mail.example.org
@@ -53,7 +54,8 @@ security = starttls
 recipient = consultant@bellegarde.example
 from_address = science-digest@example.org
 subject_prefix = Veille comportementale Bellegarde
-""",
+attach_ris = {}
+""".format(str(attach_ris).lower()),
         encoding="utf-8",
     )
 
@@ -128,6 +130,35 @@ class DigestDeliveryTests(unittest.TestCase):
             for image in related_images.values():
                 self.assertEqual(image.get_content_type(), "image/png")
                 self.assertTrue(image.get_payload(decode=True).startswith(b"\x89PNG"))
+            self.assertFalse(
+                any(
+                    part.get_content_type() == "application/x-research-info-systems"
+                    for part in message.walk()
+                )
+            )
+
+    def test_attaches_ris_only_when_enabled(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "veille.ini"
+            digest = root / "digest.html"
+            digest.write_text("<html><body>Veille</body></html>", encoding="utf-8")
+            write_config(config, attach_ris=True)
+            publication = NewPublication(
+                identity="doi:10.1234/test",
+                doi="10.1234/test",
+                title="Article",
+                url=None,
+                source_subject="Newsletter",
+                source_sender="publisher@example.org",
+            )
+
+            SMTPDigestSender(config, smtp_factory=FakeSMTP).send(digest, (publication,))
+
+            message = FakeSMTP.instances[0].messages[0]
+            attachments = list(message.iter_attachments())
+            self.assertEqual(len(attachments), 1)
+            self.assertEqual(attachments[0].get_filename(), RIS_FILENAME)
 
     def test_does_not_send_an_empty_digest(self):
         with tempfile.TemporaryDirectory() as directory:

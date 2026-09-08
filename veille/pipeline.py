@@ -23,6 +23,11 @@ def _apply_ai_analysis(publication, analysis):
         bellegarde_value=analysis.bellegarde_value,
         applications=analysis.applications,
         themes=analysis.themes,
+        interest_score=analysis.interest_score,
+        evidence_quality=analysis.evidence_quality,
+        classification_reason=analysis.classification_reason,
+        ai_model=analysis.model,
+        ai_prompt_version=analysis.prompt_version,
     )
 
 

@@ -1,5 +1,22 @@
 # Validation sur le corpus local
 
+## Version 0.14.1 — 1er septembre 2026
+
+- 219 tests automatisés réussis sous Python 3.14 ;
+- un courriel au charset inconnu est rejeté sans bloquer le feedback suivant ;
+- le feedback conserve le classement, la note, le modèle et la version de
+  consigne affichés, même après une nouvelle analyse ;
+- seule la dernière décision de chaque article entre dans le rapport et les
+  tendances exigent trois remontées et trois abaissements distincts ;
+- l’historique survit à la réconciliation d’une identité titre vers un DOI ;
+- les notes et la provenance IA sont portées jusqu’à l’historique quotidien ;
+- la pièce jointe RIS est absente par défaut et présente avec
+  `digest.attach_ris = true` ;
+- la migration SQLite passe au schéma 13.
+
+Les avertissements `ResourceWarning` observés proviennent des faux objets HTTP
+des tests historiques et ne correspondent pas à une fuite en production.
+
 Validation effectuée le 21 août 2026 sur les 22 newsletters `.eml` fournies dans le
 dossier local `inbox`.
 

@@ -3,6 +3,22 @@
 - [ ] Ajouter, pour chaque auteur, un lien vers sa recherche Google Scholar.
 - [x] Remplacer la note IA globale par une grille de critères explicites et auditables.
 
+## Planifié — digest adaptatif
+
+- [ ] Ajouter un motif facultatif aux trois requalifications.
+- [ ] Afficher la qualité des preuves et la raison du classement.
+- [ ] Faire valider chaque semaine 3 à 5 exclus proches de la frontière.
+- [ ] Mesurer le taux de sauvetage, les désaccords et les dérives par source.
+
+## Livré en version 0.14.1
+
+- [x] Lier chaque feedback à la version exacte du classement affiché.
+- [x] Ignorer un courriel de feedback illisible sans bloquer les suivants.
+- [x] Analyser seulement la dernière décision par article et les deux sens d’erreur.
+- [x] Préserver l’historique lors d’une réconciliation titre vers DOI.
+- [x] Conserver notes et provenance IA dans l’historique quotidien.
+- [x] Rendre la pièce jointe RIS facultative et désactivée par défaut.
+
 ## Livré en version 0.14.0
 
 - [x] Joindre au digest un fichier RIS et ouvrir chaque article pour Zotero.

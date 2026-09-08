@@ -12,7 +12,7 @@ from veille.feedback import (
     feedback_mailto,
     run_feedback_import,
 )
-from veille.models import ParsedMessage, PublicationCandidate, PublicationPriority
+from veille.models import AIAnalysis, ParsedMessage, PublicationCandidate, PublicationPriority
 from veille.storage import Store
 
 
@@ -131,6 +131,32 @@ class FeedbackTests(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_imports_imap_messages_in_numeric_uid_order(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "feedback"
+            inbox.mkdir()
+            database = root / "veille.sqlite"
+            add_publication(database)
+            token = create_feedback_token(IDENTITY, SECRET)
+            validation_email(inbox / "imap-1-9.eml", "high", token)
+            validation_email(inbox / "imap-1-10.eml", "excluded", token)
+
+            report = run_feedback_import(
+                inbox,
+                database,
+                authorized_sender="consultant@example.org",
+                token_secret=SECRET,
+            )
+
+            self.assertEqual(report.accepted, 2)
+            store = Store(database)
+            try:
+                feedback = store.latest_publication_feedback(IDENTITY)
+            finally:
+                store.close()
+            self.assertEqual(feedback["priority"], "excluded")
+
     def test_rejects_a_forged_sender_and_a_tampered_token(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -196,6 +222,113 @@ class FeedbackTests(unittest.TestCase):
             self.assertEqual(rows[0]["user_priority"], "excluded")
             self.assertEqual(rows[0]["title"], "A feedback-worthy article")
             self.assertEqual(rows[0]["ai_priority"], "")
+
+    def test_import_continues_after_a_message_with_an_unknown_charset(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "feedback"
+            inbox.mkdir()
+            database = root / "veille.sqlite"
+            add_publication(database)
+            (inbox / "a-malformed.eml").write_bytes(
+                b"From: consultant@example.org\r\n"
+                b"Subject: [Veille feedback] broken\r\n"
+                b"Content-Type: text/plain; charset=unknown-bellegarde\r\n\r\n"
+                b"VEILLE-FEEDBACK/1\r\n"
+            )
+            validation_email(
+                inbox / "b-valid.eml",
+                "high",
+                create_feedback_token(IDENTITY, SECRET),
+            )
+
+            report = run_feedback_import(
+                inbox,
+                database,
+                authorized_sender="consultant@example.org",
+                token_secret=SECRET,
+            )
+
+            self.assertEqual(report.accepted, 1)
+            self.assertEqual(report.rejected, 1)
+            self.assertEqual(len(report.warnings), 1)
+
+    def test_feedback_keeps_the_assessment_that_was_displayed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "feedback"
+            inbox.mkdir()
+            database = root / "veille.sqlite"
+            add_publication(database)
+            store = Store(database)
+            try:
+                store.save_ai_assessment(
+                    IDENTITY,
+                    AIAnalysis(
+                        relevant=True,
+                        priority=PublicationPriority.WATCH,
+                        summary_fr="v5",
+                        bellegarde_value="v5",
+                        applications=(),
+                        themes=(),
+                        input_tokens=10,
+                        output_tokens=5,
+                        model="gpt-5.6-luna",
+                        prompt_version="bellegarde-v5",
+                        interest_score=42,
+                        classification_reason="classement affiché",
+                    ),
+                )
+            finally:
+                store.close()
+            token = create_feedback_token(
+                IDENTITY,
+                SECRET,
+                original_priority="watch",
+                original_interest_score=42,
+                ai_model="gpt-5.6-luna",
+                ai_prompt_version="bellegarde-v5",
+            )
+            validation_email(inbox / "feedback.eml", "high", token)
+
+            store = Store(database)
+            try:
+                store.save_ai_assessment(
+                    IDENTITY,
+                    AIAnalysis(
+                        relevant=True,
+                        priority=PublicationPriority.EXCLUDED,
+                        summary_fr="v6",
+                        bellegarde_value="v6",
+                        applications=(),
+                        themes=(),
+                        input_tokens=10,
+                        output_tokens=5,
+                        model="gpt-5.6-luna",
+                        prompt_version="bellegarde-v6",
+                        interest_score=12,
+                        classification_reason="classement ultérieur",
+                    ),
+                )
+            finally:
+                store.close()
+
+            run_feedback_import(
+                inbox,
+                database,
+                authorized_sender="consultant@example.org",
+                token_secret=SECRET,
+            )
+            store = Store(database)
+            try:
+                row = store.feedback_export_rows()[0]
+            finally:
+                store.close()
+
+            self.assertEqual(row["ai_priority"], "watch")
+            self.assertEqual(row["ai_prompt_version"], "bellegarde-v5")
+            self.assertEqual(row["ai_interest_score"], 42)
+            self.assertEqual(row["ai_classification_reason"], "classement affiché")
 
 
 if __name__ == "__main__":

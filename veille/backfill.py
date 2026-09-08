@@ -204,6 +204,8 @@ def _analyzed_publication(publication, analysis):
         interest_score=analysis.interest_score,
         evidence_quality=analysis.evidence_quality,
         classification_reason=analysis.classification_reason,
+        ai_model=analysis.model,
+        ai_prompt_version=analysis.prompt_version,
     )
 
 

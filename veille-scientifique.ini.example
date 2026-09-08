@@ -22,6 +22,9 @@ test_recipient = science-digest@example.org
 recipient = consultant@example.org
 from_address = science-digest@example.org
 subject_prefix = Veille scientifique Bellegarde
+# Désactivé par défaut pour limiter le poids du courriel. Le bouton Zotero
+# reste disponible article par article.
+attach_ris = false
 
 [feedback]
 # Chaque bouton prépare un courriel vers la boîte scientifique. Seuls les

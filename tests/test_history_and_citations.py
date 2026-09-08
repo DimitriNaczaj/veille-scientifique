@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from veille.citations import RIS_FILENAME, render_ris
 from veille.feedback_review import analyse_feedback, export_feedback_review, render_review
 from veille.history import collect_history, export_digest_history, render_history
-from veille.models import NewPublication, PublicationPriority
+from veille.models import ParsedMessage, PublicationCandidate, NewPublication, PublicationPriority
 from veille.storage import Store
 
 
@@ -192,6 +192,55 @@ class DigestHistoryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             export_digest_history(self.fixture.database, "x.html", limit=0)
 
+    def test_history_survives_title_to_doi_reconciliation(self):
+        title = "Article d’abord repéré sans DOI"
+        store = self.fixture.store()
+        try:
+            store.add_message(
+                ParsedMessage(
+                    identity="provisional-message",
+                    subject="Alerte",
+                    sender="publisher@example.org",
+                    publications=(
+                        PublicationCandidate(
+                            identity="title:provisional",
+                            doi=None,
+                            title=title,
+                            url="https://example.org/article",
+                        ),
+                    ),
+                ),
+                "provisional.eml",
+            )
+            store.record_digest_run(
+                "quotidien",
+                [_publication("title:provisional", title=title, doi=None)],
+                sent=True,
+            )
+            store.add_message(
+                ParsedMessage(
+                    identity="canonical-message",
+                    subject="Nouvelle alerte",
+                    sender="publisher@example.org",
+                    publications=(
+                        PublicationCandidate(
+                            identity="doi:10.1234/canonical",
+                            doi="10.1234/canonical",
+                            title=title,
+                            url="https://doi.org/10.1234/canonical",
+                        ),
+                    ),
+                ),
+                "canonical.eml",
+            )
+        finally:
+            store.close()
+
+        history = collect_history(self.fixture.database)
+
+        self.assertEqual(history[0]["articles"][0]["title"], title)
+        self.assertEqual(history[0]["articles"][0]["doi"], "10.1234/canonical")
+
 
 class FeedbackReviewTests(unittest.TestCase):
     def setUp(self):
@@ -225,9 +274,11 @@ class FeedbackReviewTests(unittest.TestCase):
             store.connection.execute(
                 "INSERT INTO publication_feedback_messages("
                 "message_identity, source_path, sender, publication_identity, "
-                "priority, status, recorded_at) VALUES (?,?,?,?,?,?,?)",
+                "priority, status, original_priority, ai_model, ai_prompt_version, "
+                "recorded_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 ("m-" + identity, "/tmp/m.eml", "a@b.co", identity,
-                 user_priority, "accepted", "2026-06-02"),
+                 user_priority, "accepted", ai_priority, "gpt-5.6-luna",
+                 "bellegarde-v5", "2026-06-02"),
             )
             store.connection.commit()
         finally:
@@ -248,7 +299,10 @@ class FeedbackReviewTests(unittest.TestCase):
     def test_a_criterion_that_separates_the_two_directions_is_flagged(self):
         self._seed("a", "watch", "high", actionability_score=9)
         self._seed("b", "watch", "high", actionability_score=8)
-        self._seed("c", "high", "excluded", actionability_score=2)
+        self._seed("c", "watch", "high", actionability_score=7)
+        self._seed("d", "high", "excluded", actionability_score=2)
+        self._seed("e", "high", "excluded", actionability_score=3)
+        self._seed("f", "high", "excluded", actionability_score=1)
 
         analysis = analyse_feedback(self.fixture.database)
         actionability = next(
@@ -257,6 +311,39 @@ class FeedbackReviewTests(unittest.TestCase):
 
         self.assertGreater(actionability["gap"], 1)
         self.assertIn("discrimine", render_review(analysis))
+
+    def test_only_the_latest_feedback_per_publication_is_analysed(self):
+        self._seed("a", "watch", "high")
+        store = self.fixture.store()
+        try:
+            for index, priority in enumerate(("excluded", "high"), 2):
+                store.connection.execute(
+                    "INSERT INTO publication_feedback_messages("
+                    "message_identity, source_path, sender, publication_identity, "
+                    "priority, status, original_priority, ai_model, ai_prompt_version, "
+                    "recorded_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        "m-a-{}".format(index), "/tmp/m.eml", "a@b.co", "a",
+                        priority, "accepted", "watch", "gpt-5.6-luna",
+                        "bellegarde-v5", "2026-06-0{}".format(index + 1),
+                    ),
+                )
+            store.connection.commit()
+        finally:
+            store.close()
+
+        analysis = analyse_feedback(self.fixture.database)
+
+        self.assertEqual(analysis["total"], 1)
+        self.assertEqual(analysis["counts"]["remonté"], 1)
+
+    def test_revision_requires_three_distinct_cases_in_each_direction(self):
+        for identity in ("a", "b", "c"):
+            self._seed(identity, "watch", "high")
+
+        analysis = analyse_feedback(self.fixture.database)
+
+        self.assertFalse(analysis["sufficient"])
 
     def test_too_few_corrections_withholds_the_criteria_reading(self):
         self._seed("a", "watch", "high")
