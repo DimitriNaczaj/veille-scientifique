@@ -186,11 +186,11 @@ class BackfillPlanCommandTests(unittest.TestCase):
             self.assertEqual(
                 metadata.authors,
                 (
-                    "Linda Pfister",
-                    "Junia Mannheimer",
-                    "Ida Hedkvist",
-                    "Rebecca Thorburn Stern",
-                    "Anna Sarkadi",
+                    "Pfister, Linda",
+                    "Mannheimer, Junia",
+                    "Hedkvist, Ida",
+                    "Thorburn Stern, Rebecca",
+                    "Sarkadi, Anna",
                 ),
             )
 

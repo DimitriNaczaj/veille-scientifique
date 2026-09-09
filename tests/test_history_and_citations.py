@@ -39,8 +39,8 @@ class RisTests(unittest.TestCase):
 
         self.assertTrue(text.startswith("TY  - JOUR"))
         self.assertIn("TI  - Un titre d’article", text)
-        self.assertIn("AU  - Dupont A.", text)
-        self.assertIn("AU  - Martin B.", text)
+        self.assertIn("AU  - Dupont, A.", text)
+        self.assertIn("AU  - Martin, B.", text)
         self.assertIn("JO  - Revue de test", text)
         self.assertIn("PY  - 2026", text)
         self.assertIn("DO  - 10.1016/j.test.2026.1", text)

@@ -64,11 +64,10 @@ def _authors(message):
         if literal:
             name = str(literal).strip()
         else:
-            name = " ".join(
-                str(author.get(field, "")).strip()
-                for field in ("given", "family")
-                if author.get(field)
-            )
+            given = str(author.get("given") or "").strip()
+            family = str(author.get("family") or "").strip()
+            suffix = str(author.get("suffix") or "").strip()
+            name = ", ".join(value for value in (family, given, suffix) if value)
         if name:
             names.append(name)
     return tuple(names)

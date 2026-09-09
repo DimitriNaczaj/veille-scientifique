@@ -1,5 +1,15 @@
 # Validation sur le corpus local
 
+## Version 0.14.3 — 9 septembre 2026
+
+- 229 tests automatisés réussis sous Python 3.14 ;
+- les auteurs du digest suivent la présentation bibliographique APA 7 ;
+- les noms collectifs, particules, prénoms composés, suffixes et listes de plus
+  de vingt auteurs sont couverts ;
+- l’export RIS conserve les prénoms disponibles sous la forme `Nom, Prénoms` ;
+- le fichier `styles/apa.csl` fourni est inclus sans modification et son XML est
+  vérifié par la suite de tests.
+
 ## Version 0.14.2 — 8 septembre 2026
 
 - 220 tests automatisés réussis sous Python 3.14 ;

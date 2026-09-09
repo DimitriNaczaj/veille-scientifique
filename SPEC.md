@@ -53,6 +53,7 @@ Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque front
 39. En tant que consultant Bellegarde, je veux écarter localement les corrections, sommaires et emplois manifestement non humains des termes comportementaux, afin de ne pas enrichir ni analyser des faux positifs structurels.
 40. En tant que consultant Bellegarde, je veux requalifier chaque article retenu en « Pépite », « Éventuellement » ou « Écarté » depuis le digest, afin de constituer progressivement un corpus de décisions humaines sans réécrire l’analyse IA initiale.
 41. En tant qu’exploitant du NAS, je veux que seule une validation envoyée depuis l’adresse autorisée et munie d’un jeton signé soit enregistrée, afin qu’un lien modifié ou un message tiers ne pollue pas le corpus.
+42. En tant que consultant Bellegarde, je veux que les noms d’auteurs soient présentés selon APA 7, afin que leur affichage reste homogène dans le digest et leur import bibliographique exploitable dans Zotero.
 
 ## Implementation Decisions
 
@@ -100,6 +101,8 @@ Une commande quotidienne unique orchestre ces étapes sur le DS218. Chaque front
 - Une nouvelle validation devient la qualification humaine courante de la publication sans supprimer les validations antérieures. Un export CSV joint chaque événement au dernier classement IA disponible et sert de corpus de calibration ; aucune modification automatique du prompt n’est déclenchée par un feedback isolé.
 - Sans clé ou lorsque l’IA est désactivée, le digest utilise la décision du préfiltre et l’abstract disponible ; cette dégradation est signalée dans le rapport.
 - Le digest contient une partie texte et une partie HTML. L’adresse destinataire est obligatoire pour un envoi réel et distincte du destinataire de test.
+- Le digest présente les auteurs selon les règles bibliographiques APA 7 : `Nom, I.`, esperluette avant le dernier auteur, dix-neuf premiers auteurs puis dernier auteur au-delà de vingt, et conservation des auteurs collectifs comme noms littéraux. Le fichier `styles/apa.csl` fourni avec le projet constitue la référence embarquée ; aucune bibliothèque CSL n’est ajoutée.
+- L’export RIS normalise chaque auteur sous la forme `Nom, Prénoms` et conserve les prénoms disponibles afin que Zotero puisse les interpréter.
 - Une erreur d’enrichissement ou d’IA laisse la publication concernée en attente. Les exclusions évaluées et les articles envoyés sont marqués traités seulement après la réussite de la livraison globale.
 - La commande `daily` enchaîne synchronisation, ingestion, enrichissement, analyse, génération et livraison. `--no-send`, `--no-ai` et les plafonds permettent une validation contrôlée. Sa sortie reste en JSON par défaut pour les appels automatisés ; `--format human` produit un rapport français multiligne, y compris en cas d’erreur, sans modifier le code de sortie.
 - Le lanceur NAS `scripts/run-daily.sh` demande le format humain par défaut pour rendre l’appel SSH et les journaux DSM directement lisibles. La variable `VEILLE_REPORT_FORMAT=json` rétablit la sortie machine.

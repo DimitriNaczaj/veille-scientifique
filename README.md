@@ -565,7 +565,19 @@ alimente l’analyse ; l’historique complet reste exporté pour l’audit.
 
 ## Références bibliographiques
 
+Le digest présente les auteurs selon APA 7 : nom de famille, initiales des
+prénoms et esperluette avant le dernier auteur. Au-delà de vingt auteurs, il
+affiche les dix-neuf premiers puis le dernier, séparé par une ellipse. Les noms
+collectifs restent écrits en toutes lettres.
+
+Le style de référence fourni avec le projet se trouve dans
+[`styles/apa.csl`](styles/apa.csl). Cette ressource CSL documente la norme
+retenue ; le programme applique directement ses règles de présentation des
+auteurs sans ajouter de dépendance Python.
+
 Le bouton « Ajouter à Zotero » de chaque article ouvre sa page, où le
 connecteur enregistre la référence. Une pièce jointe `.ris`, importable d’un
 seul geste dans Zotero, peut être activée avec `digest.attach_ris = true` ;
-elle est désactivée par défaut pour garder les courriels légers.
+elle est désactivée par défaut pour garder les courriels légers. Dans le RIS,
+les auteurs sont normalisés sous la forme `Nom, Prénoms` afin de conserver les
+prénoms disponibles lors de l’import dans Zotero.

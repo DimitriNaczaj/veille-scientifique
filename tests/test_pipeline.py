@@ -448,10 +448,11 @@ class PipelineTests(unittest.TestCase):
         self.assertNotIn("12 rue de la Science", digest)
         self.assertNotIn("lorsqu’elles sont disponibles", digest)
         self.assertNotIn("(s)", digest)
-        self.assertIn("Alice Martin, Bob Dupont, Claire Durand et al.", digest)
-        self.assertNotIn("David Leroy", digest)
+        self.assertIn(
+            "Martin, A., Dupont, B., Durand, C., &amp; Leroy, D.", digest
+        )
         authors_position = digest.index(
-            "Alice Martin, Bob Dupont, Claire Durand et al."
+            "Martin, A., Dupont, B., Durand, C., &amp; Leroy, D."
         )
         doi_position = digest.index('class="doi ink-3"')
         summary_position = digest.index(

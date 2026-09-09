@@ -3,6 +3,12 @@
 - [ ] Ajouter, pour chaque auteur, un lien vers sa recherche Google Scholar.
 - [x] Remplacer la note IA globale par une grille de critères explicites et auditables.
 
+## Livré en version 0.14.3
+
+- [x] Présenter les noms d’auteurs du digest selon APA 7.
+- [x] Normaliser les auteurs du RIS sans perdre les prénoms disponibles.
+- [x] Inclure le style `styles/apa.csl` fourni comme référence.
+
 ## Livré en version 0.14.2
 
 - [x] Accepter les fins de ligne SMTP réelles dans les courriels de feedback.

@@ -8,6 +8,7 @@ pour tout le lot, et un lien par article vers sa page, où le connecteur sait
 enregistrer la référence.
 """
 from .models import PublicationPriority
+from .names import format_ris_author
 
 
 RIS_MEDIA_TYPE = ("application", "x-research-info-systems")
@@ -35,7 +36,7 @@ def _record(publication):
     if title:
         lines.append("TI  - " + title)
     for author in publication.authors or ():
-        author = _clean(author)
+        author = _clean(format_ris_author(author))
         if author:
             lines.append("AU  - " + author)
     journal = _clean(publication.journal)

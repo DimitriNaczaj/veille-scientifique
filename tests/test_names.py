@@ -1,0 +1,79 @@
+import unittest
+import xml.etree.ElementTree as ElementTree
+from pathlib import Path
+
+from veille.names import format_apa_author, format_apa_authors, format_ris_author
+
+
+class ApaNameTests(unittest.TestCase):
+    def test_formats_full_and_indexed_names(self):
+        self.assertEqual(format_apa_author("Alice Martin"), "Martin, A.")
+        self.assertEqual(format_apa_author("Dupont A."), "Dupont, A.")
+        self.assertEqual(format_apa_author("Martin, Alice Béatrice"), "Martin, A. B.")
+        self.assertEqual(
+            format_apa_author("García Márquez, Amina"),
+            "García Márquez, A.",
+        )
+
+    def test_keeps_particles_hyphens_and_suffixes(self):
+        self.assertEqual(
+            format_apa_author("Jean-Pierre de la Cruz"),
+            "de la Cruz, J.-P.",
+        )
+        self.assertEqual(format_apa_author("John Smith Jr."), "Smith, J., Jr.")
+
+    def test_recognizes_an_uppercase_family_name(self):
+        self.assertEqual(format_apa_author("Yuan LI"), "LI, Y.")
+        self.assertEqual(format_ris_author("Yuan LI"), "LI, Yuan")
+        self.assertEqual(format_apa_author("LI, YUAN"), "LI, Y.")
+        self.assertEqual(format_ris_author("LI, YUAN"), "LI, YUAN")
+
+    def test_preserves_an_ambiguous_unstructured_compound_name(self):
+        self.assertEqual(
+            format_apa_author("Amina García Márquez"),
+            "Amina García Márquez",
+        )
+        self.assertEqual(
+            format_ris_author("Amina García Márquez"),
+            "Amina García Márquez",
+        )
+
+    def test_keeps_collective_authors_as_literals(self):
+        self.assertEqual(
+            format_apa_author("Bellegarde Research Group"),
+            "Bellegarde Research Group",
+        )
+
+    def test_formats_an_apa_author_list(self):
+        self.assertEqual(
+            format_apa_authors(("Alice Martin", "Bob Dupont", "Claire Durand")),
+            "Martin, A., Dupont, B., & Durand, C.",
+        )
+
+    def test_abbreviates_an_apa_list_after_twenty_authors(self):
+        authors = tuple("Given{} Family{}".format(index, index) for index in range(1, 22))
+
+        formatted = format_apa_authors(authors)
+
+        self.assertIn("Family19, G.", formatted)
+        self.assertNotIn("Family20, G.", formatted)
+        self.assertTrue(formatted.endswith("… Family21, G."))
+
+    def test_normalizes_ris_without_discarding_given_names(self):
+        self.assertEqual(format_ris_author("Alice Martin"), "Martin, Alice")
+        self.assertEqual(format_ris_author("Yu H."), "Yu, H.")
+
+    def test_bundles_the_apa_seventh_edition_csl_style(self):
+        path = Path(__file__).resolve().parents[1] / "styles" / "apa.csl"
+        root = ElementTree.parse(path).getroot()
+        namespace = {"csl": "http://purl.org/net/xbiblio/csl"}
+
+        self.assertEqual(root.attrib["version"], "1.0")
+        self.assertEqual(
+            root.findtext("csl:info/csl:id", namespaces=namespace),
+            "http://www.zotero.org/styles/apa",
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

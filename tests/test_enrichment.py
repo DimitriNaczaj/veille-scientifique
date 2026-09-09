@@ -298,7 +298,8 @@ class CrossrefClientTests(unittest.TestCase):
                         "container-title": ["Behavioral Science"],
                         "published": {"date-parts": [[2026, 8, 20]]},
                         "author": [
-                            {"given": "Amina", "family": "Martin"},
+                            {"given": "Amina", "family": "García Márquez"},
+                            {"given": "John", "family": "Smith", "suffix": "Jr."},
                             {"name": "Bellegarde Research Group"},
                         ],
                         "URL": "https://doi.org/10.1234/a&b",
@@ -321,7 +322,12 @@ class CrossrefClientTests(unittest.TestCase):
         self.assertEqual(metadata.journal, "Behavioral Science")
         self.assertEqual(metadata.published_date, "2026-08-20")
         self.assertEqual(
-            metadata.authors, ("Amina Martin", "Bellegarde Research Group")
+            metadata.authors,
+            (
+                "García Márquez, Amina",
+                "Smith, John, Jr.",
+                "Bellegarde Research Group",
+            ),
         )
         self.assertIn("10.1234%2Fa%26b", requests[0][0].full_url)
         self.assertIn("mailto=veille%40example.org", requests[0][0].full_url)
@@ -419,11 +425,11 @@ class EnrichmentPipelineTests(unittest.TestCase):
                     journal="Social Science & Medicine",
                     published_date="2026-08-30",
                     authors=(
-                        "Linda Pfister",
-                        "Junia Mannheimer",
-                        "Ida Hedkvist",
-                        "Rebecca Thorburn Stern",
-                        "Anna Sarkadi",
+                        "Pfister, Linda",
+                        "Mannheimer, Junia",
+                        "Hedkvist, Ida",
+                        "Thorburn Stern, Rebecca",
+                        "Sarkadi, Anna",
                     ),
                     url="https://doi.org/10.1016/j.socscimed.2026.119531",
                 )
@@ -486,7 +492,8 @@ class EnrichmentPipelineTests(unittest.TestCase):
             self.assertEqual(report.publications_enriched, 1)
             digest = (root / "digest.html").read_text(encoding="utf-8")
             self.assertIn(
-                "Linda Pfister, Junia Mannheimer, Ida Hedkvist et al.",
+                "Pfister, L., Mannheimer, J., Hedkvist, I., Thorburn Stern, R., "
+                "&amp; Sarkadi, A.",
                 digest,
             )
             self.assertNotIn("Rebecca Thorburn Stern", digest)
@@ -575,7 +582,9 @@ class EnrichmentPipelineTests(unittest.TestCase):
                 ["Behavioral choices in household energy use"],
             )
             digest = (root / "digest.html").read_text(encoding="utf-8")
-            self.assertIn("Alice Martin, Benoît Leroy, Chloé Bernard et al.", digest)
+            self.assertIn(
+                "Martin, A., Leroy, B., Bernard, C., &amp; Robert, D.", digest
+            )
 
     def test_retries_publisher_after_crossref_not_found_without_repeating_crossref(self):
         crossref_calls = []
@@ -836,7 +845,7 @@ class EnrichmentPipelineTests(unittest.TestCase):
             self.assertIn("Social norms and household energy conservation", html)
             self.assertIn("Journal of Behavioral Public Policy", html)
             self.assertIn("A randomized field experiment", html)
-            self.assertIn("Amina Martin", html)
+            self.assertIn("Martin, A., &amp; Bernard, L.", html)
 
     def test_reuses_cached_metadata_after_digest_write_failure(self):
         with tempfile.TemporaryDirectory() as directory:
