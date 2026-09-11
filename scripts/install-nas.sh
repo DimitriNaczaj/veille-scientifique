@@ -451,6 +451,17 @@ if ! grep -q '^\[feedback\]$' "$CONFIG_PATH"; then
   } >> "$CONFIG_PATH"
   say "Feedback par courriel activé pour $FEEDBACK_AUTHORIZED_SENDER."
 fi
+if ! grep -q '^\[linkedin\]$' "$CONFIG_PATH"; then
+  LINKEDIN_RECIPIENT=$("$PYTHON_BIN" -c \
+    'import configparser, sys; c=configparser.ConfigParser(interpolation=None); c.read(sys.argv[1], encoding="utf-8"); print(c.get("imap", "username"))' \
+    "$CONFIG_PATH")
+  {
+    printf '\n%s\n' '[linkedin]' 'enabled = true'
+    printf 'recipient = %s\n' "$LINKEDIN_RECIPIENT"
+    printf '%s\n' 'token_secret_env = SCIENCE_DIGEST_LINKEDIN_SECRET'
+  } >> "$CONFIG_PATH"
+  say "Transmission des articles vers LinkedIn activée."
+fi
 chmod 600 "$CONFIG_PATH"
 if [[ "$REUSE_CONFIG" == true ]]; then
   (
@@ -468,6 +479,12 @@ if ! grep -q '^SCIENCE_DIGEST_FEEDBACK_SECRET=' "$SECRETS_PATH"; then
   unset FEEDBACK_SECRET
   say "Secret de signature du feedback généré localement."
 fi
+if ! grep -q '^SCIENCE_DIGEST_LINKEDIN_SECRET=' "$SECRETS_PATH"; then
+  LINKEDIN_SECRET=$("$PYTHON_BIN" -c 'import secrets; print(secrets.token_hex(32))')
+  printf 'SCIENCE_DIGEST_LINKEDIN_SECRET=%q\n' "$LINKEDIN_SECRET" >> "$SECRETS_PATH"
+  unset LINKEDIN_SECRET
+  say "Secret de signature LinkedIn généré localement."
+fi
 if [[ -f "$SECRETS_PATH" ]]; then
   # shellcheck disable=SC1090
   source "$SECRETS_PATH"
@@ -476,6 +493,8 @@ if [[ -f "$SECRETS_PATH" ]]; then
   [ "${ELSEVIER_API_KEY+x}" = x ] && export ELSEVIER_API_KEY
   [ "${SCIENCE_DIGEST_FEEDBACK_SECRET+x}" = x ] && \
     export SCIENCE_DIGEST_FEEDBACK_SECRET
+  [ "${SCIENCE_DIGEST_LINKEDIN_SECRET+x}" = x ] && \
+    export SCIENCE_DIGEST_LINKEDIN_SECRET
 fi
 say "Configuration et secrets privés écrits en mode 600. Aucun secret n’est envoyé à GitHub."
 

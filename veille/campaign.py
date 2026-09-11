@@ -22,6 +22,7 @@ from .backfill import (
 from .delivery import SMTPDigestSender
 from .digest import write_digest
 from .feedback import load_feedback_settings
+from .linkedin_bridge import load_linkedin_settings
 from .mail_diagnostics import _load_config
 from .mbox_import import _validate_distinct_paths
 from .models import PublicationPriority
@@ -670,6 +671,7 @@ def dispatch_backfill(
                 total_count=len(selected),
                 excluded_count=0,
                 feedback_settings=load_feedback_settings(config_path),
+                linkedin_settings=load_linkedin_settings(config_path),
             )
             if not no_send:
                 sender = SMTPDigestSender(

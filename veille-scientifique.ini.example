@@ -38,6 +38,12 @@ output = /volume1/Bellegarde/veille-scientifique/out/feedback.csv
 token_secret_env = SCIENCE_DIGEST_FEEDBACK_SECRET
 sync_limit = 50
 
+[linkedin]
+# Ce bouton reste indépendant de la période de requalification par feedback.
+enabled = true
+recipient = science-digest@example.org
+token_secret_env = SCIENCE_DIGEST_LINKEDIN_SECRET
+
 [app]
 inbox = /volume1/Bellegarde/veille-scientifique/inbox
 database = /volume1/Bellegarde/veille-scientifique/data/veille.sqlite

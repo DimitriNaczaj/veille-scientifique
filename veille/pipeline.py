@@ -43,6 +43,7 @@ def run_pipeline(
     ai_limit=30,
     delivery_handler=None,
     feedback_settings=None,
+    linkedin_settings=None,
 ):
     if (
         isinstance(enrichment_limit, bool)
@@ -223,6 +224,7 @@ def run_pipeline(
             total_count=len(handled_publications),
             excluded_count=publications_excluded,
             feedback_settings=feedback_settings,
+            linkedin_settings=linkedin_settings,
         )
         if delivery_handler is not None:
             delivery_handler.send(output, selected_publications)

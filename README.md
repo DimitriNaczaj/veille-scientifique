@@ -20,6 +20,8 @@ Application de veille scientifique autonome et légère pour Synology DS218.
   bien-être lorsqu’aucun comportement ni aucune décision n’est mesuré ;
 - trois boutons de requalification dans chaque article retenu, validés par
   l’envoi d’un courriel signé puis conservés comme corpus de feedback ;
+- bouton de transmission signée d’un article vers le futur système de
+  préparation des publications LinkedIn ;
 - second tri et résumés français structurés via l’API OpenAI, lorsque configurée ;
 - déduplication persistante avec SQLite ;
 - génération d’un digest HTML avec alternative texte et envoi SMTP ;
@@ -355,6 +357,27 @@ Le feedback ne modifie pas automatiquement le prompt après chaque clic. Le CSV
 sert à repérer les désaccords récurrents, calibrer une nouvelle version du filtre
 et rejouer les exemples validés comme tests de régression, afin d’éviter le
 sur-ajustement sur un article isolé.
+
+## Préparer un article pour LinkedIn
+
+Lorsque `[linkedin].enabled = true`, chaque article retenu comporte le bouton
+**Préparer un post LinkedIn**. Il ouvre un courriel adressé au compte défini par
+`[linkedin].recipient`, avec le marqueur `VEILLE-LINKEDIN/1` et un jeton HMAC
+propre à cette action. Le jeton contient uniquement l’identité de la
+publication. Il ne peut pas être remplacé par un jeton de requalification. La
+section `[linkedin]` et son secret restent indépendants de `[feedback]`.
+
+Le clic et l’envoi du courriel ne déclenchent aucun appel IA et ne publient
+rien. Le futur importeur du projet LinkedIn devra vérifier le jeton, retrouver
+les métadonnées de l’article dans la base SQLite de la veille, puis créer un
+dossier au statut `new`. L’IA interviendra seulement lorsque l’utilisateur
+demandera la génération du brouillon dans l’application LinkedIn.
+
+Si le feedback reste activé, les demandes sont téléchargées avec les autres
+messages du dossier et restent disponibles dans `feedback-inbox`. Si le
+feedback est désactivé, elles restent dans la boîte de réception jusqu’à la
+mise en place de l’importeur LinkedIn. Cet importeur possédera sa propre
+synchronisation et son propre suivi des messages.
 
 ## Tests
 

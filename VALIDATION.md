@@ -1,5 +1,15 @@
 # Validation sur le corpus local
 
+## Version 0.15.0 : 12 septembre 2026
+
+- 235 tests automatisés réussis sous Python 3.14 ;
+- le digest HTML et son alternative texte proposent la transmission LinkedIn ;
+- la demande contient un jeton HMAC limité à l’action LinkedIn ;
+- un jeton modifié ou issu du feedback est refusé ;
+- le bouton reste disponible lorsque le feedback est désactivé ;
+- la préparation de la demande ne dépend d’aucun service externe et
+  n’invoque pas l’IA.
+
 ## Version 0.14.3 — 9 septembre 2026
 
 - 229 tests automatisés réussis sous Python 3.14 ;

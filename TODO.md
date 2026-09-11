@@ -3,6 +3,13 @@
 - [ ] Ajouter, pour chaque auteur, un lien vers sa recherche Google Scholar.
 - [x] Remplacer la note IA globale par une grille de critères explicites et auditables.
 
+## Livré en version 0.15.0
+
+- [x] Ajouter au digest un bouton signé « Préparer un post LinkedIn ».
+- [x] Séparer le jeton LinkedIn des jetons de requalification.
+- [x] Maintenir le bouton indépendamment de l’activation du feedback.
+- [x] Définir le contrat destiné au futur importeur sans appel IA automatique.
+
 ## Livré en version 0.14.3
 
 - [x] Présenter les noms d’auteurs du digest selon APA 7.

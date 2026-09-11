@@ -4,6 +4,7 @@ from urllib.parse import quote
 
 from .atomic import atomic_open
 from .feedback import feedback_mailto
+from .linkedin_bridge import linkedin_request_mailto
 from .models import PublicationPriority
 from .names import format_apa_authors
 
@@ -164,7 +165,29 @@ def _zotero_block(publication):
         </tr>""".format(url=escape(url, quote=True))
 
 
-def _publication_html(publication, feedback_settings=None):
+def _linkedin_block(publication, settings):
+    if settings is None or not settings.enabled:
+        return ""
+    link = linkedin_request_mailto(
+        publication.identity,
+        publication.title,
+        settings.recipient,
+        settings.token_secret,
+    )
+    return """
+        <tr>
+          <td class="pad" style="padding:18px 34px 0 34px;font-family:Arial,Helvetica,sans-serif;">
+            <a href="{link}" style="display:inline-block;padding:10px 16px;border-radius:999px;background:#0A66C2;color:#FFFFFF;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:16px;font-weight:bold;text-decoration:none;white-space:nowrap;">Préparer un post LinkedIn</a>
+            <p class="ink-3" style="margin:8px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:17px;color:#7A777D;">Prépare une demande signée. L’IA sera appelée plus tard, lors de la génération du brouillon LinkedIn.</p>
+          </td>
+        </tr>""".format(link=escape(link, quote=True))
+
+
+def _publication_html(
+    publication,
+    feedback_settings=None,
+    linkedin_settings=None,
+):
     title = escape(publication.title or publication.doi or "Publication sans titre")
     url = _publication_url(publication)
     escaped_url = escape(url, quote=True)
@@ -221,6 +244,7 @@ def _publication_html(publication, feedback_settings=None):
     applications = _applications_block(publication.applications)
     feedback = _feedback_block(publication, feedback_settings)
     zotero = _zotero_block(publication)
+    linkedin = _linkedin_block(publication, linkedin_settings)
 
     themes = ""
     if publication.themes:
@@ -305,6 +329,7 @@ def _publication_html(publication, feedback_settings=None):
         {abstract}
         {cta}
         {zotero}
+        {linkedin}
         {feedback}
         <tr>
           <td class="pad" style="padding:24px 34px 30px 34px;font-family:Arial,Helvetica,sans-serif;">
@@ -332,12 +357,18 @@ def _publication_html(publication, feedback_settings=None):
         abstract=abstract,
         cta=cta,
         zotero=zotero,
+        linkedin=linkedin,
         feedback=feedback,
         metadata=metadata_markup,
     )
 
 
-def _section_html(priority, publications, feedback_settings=None):
+def _section_html(
+    priority,
+    publications,
+    feedback_settings=None,
+    linkedin_settings=None,
+):
     dot = "#6FCF97" if priority is PublicationPriority.HIGH else "#7A777D"
     return """
   <tr>
@@ -356,7 +387,11 @@ def _section_html(priority, publications, feedback_settings=None):
         dot=dot,
         heading=escape(_SECTION_HEADINGS.get(priority, "Publications")),
         articles="".join(
-            _publication_html(publication, feedback_settings)
+            _publication_html(
+                publication,
+                feedback_settings=feedback_settings,
+                linkedin_settings=linkedin_settings,
+            )
             for publication in publications
         ),
     )
@@ -378,6 +413,7 @@ def render_digest(
     total_count=None,
     excluded_count=0,
     feedback_settings=None,
+    linkedin_settings=None,
 ):
     publications = tuple(publications)
     now = _paris_now()
@@ -401,12 +437,24 @@ def render_digest(
                 )
                 if articles:
                     sections.append(
-                        _section_html(priority, articles, feedback_settings)
+                        _section_html(
+                            priority,
+                            articles,
+                            feedback_settings=feedback_settings,
+                            linkedin_settings=linkedin_settings,
+                        )
                     )
             body = "".join(sections)
         else:
             body = '<tr><td height="18" style="height:18px;line-height:18px;font-size:0;">&nbsp;</td></tr>'
-            body += "".join(_publication_html(publication) for publication in publications)
+            body += "".join(
+                _publication_html(
+                    publication,
+                    feedback_settings=feedback_settings,
+                    linkedin_settings=linkedin_settings,
+                )
+                for publication in publications
+            )
         if filtered:
             summary = _filtered_summary(len(publications), total_count)
         else:
@@ -531,6 +579,7 @@ def write_digest(
     total_count=None,
     excluded_count=0,
     feedback_settings=None,
+    linkedin_settings=None,
 ):
     with atomic_open(path, "w", encoding="utf-8") as stream:
         stream.write(
@@ -539,5 +588,6 @@ def write_digest(
                 total_count=total_count,
                 excluded_count=excluded_count,
                 feedback_settings=feedback_settings,
+                linkedin_settings=linkedin_settings,
             )
         )

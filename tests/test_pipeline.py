@@ -11,6 +11,7 @@ from urllib.parse import quote, urlencode
 from veille.mail_parser import normalize_doi, parse_message
 from veille.digest import render_digest
 from veille.feedback import FeedbackSettings
+from veille.linkedin_bridge import LinkedinBridgeSettings
 from veille.models import AIAnalysis, NewPublication, PublicationPriority
 from veille.pipeline import _apply_ai_analysis, run_pipeline
 from veille.storage import Store
@@ -508,7 +509,7 @@ class PipelineTests(unittest.TestCase):
         self.assertNotIn(watch_abstract, watch_digest)
         self.assertNotIn(">Abstract</p>", watch_digest)
 
-    def test_digest_offers_three_signed_email_feedback_buttons(self):
+    def test_digest_offers_feedback_and_linkedin_email_buttons(self):
         publication = NewPublication(
             identity="doi:10.1234/feedback-buttons",
             doi="10.1234/feedback-buttons",
@@ -527,14 +528,31 @@ class PipelineTests(unittest.TestCase):
             token_secret="feedback-secret",
             sync_limit=50,
         )
+        linkedin_settings = LinkedinBridgeSettings(
+            enabled=True,
+            recipient="science-digest@example.org",
+            token_secret="linkedin-secret",
+        )
 
-        digest = render_digest((publication,), feedback_settings=settings)
+        digest = render_digest(
+            (publication,),
+            feedback_settings=settings,
+            linkedin_settings=linkedin_settings,
+        )
 
         self.assertIn("Requalifier cet article", digest)
         self.assertIn(">Pépite</a>", digest)
         self.assertIn(">Éventuellement</a>", digest)
         self.assertIn(">Écarté</a>", digest)
-        self.assertEqual(digest.count("mailto:science-digest@example.org"), 3)
+        self.assertIn(">Préparer un post LinkedIn</a>", digest)
+        self.assertIn("VEILLE-LINKEDIN%2F1", digest)
+        self.assertEqual(digest.count("mailto:science-digest@example.org"), 4)
+
+        linkedin_only = render_digest(
+            (publication,), linkedin_settings=linkedin_settings
+        )
+        self.assertIn(">Préparer un post LinkedIn</a>", linkedin_only)
+        self.assertNotIn("Requalifier cet article", linkedin_only)
 
     def test_digest_uses_natural_french_agreements_for_counts(self):
         publication = NewPublication(

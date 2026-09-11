@@ -44,6 +44,22 @@ class PrivateInstallerTests(unittest.TestCase):
         self.assertNotIn('write_env GITHUB_TOKEN', script)
         self.assertNotIn('GITHUB_TOKEN=', script.split('TOTAL_STAGES=8', 1)[1])
 
+    def test_installer_provisions_an_independent_linkedin_secret(self):
+        script = (ROOT / "scripts" / "install-nas.sh").read_text(
+            encoding="utf-8"
+        )
+        example = (ROOT / "veille-scientifique.ini.example").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("[linkedin]", script)
+        self.assertIn("SCIENCE_DIGEST_LINKEDIN_SECRET", script)
+        self.assertIn("export SCIENCE_DIGEST_LINKEDIN_SECRET", script)
+        self.assertIn("[linkedin]", example)
+        self.assertIn(
+            "token_secret_env = SCIENCE_DIGEST_LINKEDIN_SECRET", example
+        )
+
     def test_readme_bootstrap_hides_and_clears_the_private_token(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
 

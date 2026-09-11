@@ -9,6 +9,7 @@ from .europepmc import europepmc_client_from_config
 from .openalex import openalex_client_from_config
 from .filtering import BehavioralScienceFilter
 from .feedback import load_feedback_settings, run_feedback_import
+from .linkedin_bridge import load_linkedin_settings
 from .imap_sync import run_imap_sync
 from .mail_diagnostics import _load_config, load_imap_settings
 from .pipeline import run_pipeline
@@ -136,6 +137,7 @@ def run_daily(
 
     warnings = []
     feedback_settings = None if no_feedback else load_feedback_settings(config_path)
+    linkedin_settings = load_linkedin_settings(config_path)
     analysis_provider = None
     ai_enabled = not no_ai
     if config.has_section("ai"):
@@ -217,6 +219,7 @@ def run_daily(
         ai_limit=ai_limit,
         delivery_handler=delivery_handler,
         feedback_settings=feedback_settings,
+        linkedin_settings=linkedin_settings,
     )
     return DailyReport(
         sync_report=sync_report,

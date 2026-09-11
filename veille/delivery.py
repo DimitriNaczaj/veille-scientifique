@@ -14,6 +14,7 @@ from .mail_diagnostics import (
 )
 from .citations import RIS_FILENAME, RIS_MEDIA_TYPE, render_ris
 from .feedback import feedback_mailto, load_feedback_settings
+from .linkedin_bridge import linkedin_request_mailto, load_linkedin_settings
 from .models import PublicationPriority
 
 
@@ -72,7 +73,11 @@ def _publication_url(publication):
     return publication.url or ""
 
 
-def _plain_digest(publications, feedback_settings=None):
+def _plain_digest(
+    publications,
+    feedback_settings=None,
+    linkedin_settings=None,
+):
     lines = ["Veille quotidienne", ""]
     for publication in publications:
         lines.append(publication.title or publication.doi or "Publication sans titre")
@@ -105,6 +110,17 @@ def _plain_digest(publications, feedback_settings=None):
                         ),
                     )
                 )
+        if linkedin_settings is not None:
+            lines.append(
+                "Préparer un post LinkedIn : {}".format(
+                    linkedin_request_mailto(
+                        publication.identity,
+                        publication.title,
+                        linkedin_settings.recipient,
+                        linkedin_settings.token_secret,
+                    )
+                )
+            )
         lines.append("")
     return "\n".join(lines)
 
@@ -143,6 +159,7 @@ class SMTPDigestSender:
         smtp = load_smtp_settings(self.config_path)
         digest = load_digest_delivery_settings(self.config_path)
         feedback_settings = load_feedback_settings(self.config_path)
+        linkedin_settings = load_linkedin_settings(self.config_path)
         html = Path(digest_path).read_text(encoding="utf-8")
         message = EmailMessage()
         message["From"] = digest.from_address
@@ -157,7 +174,13 @@ class SMTPDigestSender:
             date.today().isoformat(),
             article_count,
         )
-        message.set_content(_plain_digest(publications, feedback_settings))
+        message.set_content(
+            _plain_digest(
+                publications,
+                feedback_settings=feedback_settings,
+                linkedin_settings=linkedin_settings,
+            )
+        )
         message.add_alternative(html, subtype="html")
         _add_related_images(message, html)
         # Le fichier RIS suit le digest : c’est le seul geste qui importe

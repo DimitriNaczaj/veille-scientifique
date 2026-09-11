@@ -38,7 +38,16 @@ class FakeSMTP:
         return 221, b"bye"
 
 
-def write_config(path, attach_ris=False):
+def write_config(path, attach_ris=False, linkedin=False):
+    linkedin_section = ""
+    if linkedin:
+        linkedin_section = """
+
+[linkedin]
+enabled = true
+recipient = science-digest@example.org
+token_secret = linkedin-secret
+"""
     Path(path).write_text(
         """[imap]
 host = mail.example.org
@@ -55,7 +64,7 @@ recipient = consultant@bellegarde.example
 from_address = science-digest@example.org
 subject_prefix = Veille comportementale Bellegarde
 attach_ris = {}
-""".format(str(attach_ris).lower()),
+{}""".format(str(attach_ris).lower(), linkedin_section),
         encoding="utf-8",
     )
 
@@ -159,6 +168,32 @@ class DigestDeliveryTests(unittest.TestCase):
             attachments = list(message.iter_attachments())
             self.assertEqual(len(attachments), 1)
             self.assertEqual(attachments[0].get_filename(), RIS_FILENAME)
+
+    def test_plain_alternative_contains_the_linkedin_request(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "veille.ini"
+            digest = root / "digest.html"
+            digest.write_text("<html><body>Veille</body></html>", encoding="utf-8")
+            write_config(config, linkedin=True)
+            publication = NewPublication(
+                identity="doi:10.1234/linkedin",
+                doi="10.1234/linkedin",
+                title="Article LinkedIn",
+                url=None,
+                source_subject="Newsletter",
+                source_sender="publisher@example.org",
+            )
+
+            SMTPDigestSender(config, smtp_factory=FakeSMTP).send(
+                digest, (publication,)
+            )
+
+            plain = FakeSMTP.instances[0].messages[0].get_body(
+                preferencelist=("plain",)
+            ).get_content()
+            self.assertIn("Préparer un post LinkedIn :", plain)
+            self.assertIn("VEILLE-LINKEDIN%2F1", plain)
 
     def test_does_not_send_an_empty_digest(self):
         with tempfile.TemporaryDirectory() as directory:
