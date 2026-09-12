@@ -46,6 +46,7 @@ fi
 [ "${OPENAI_API_KEY+x}" = x ] && export OPENAI_API_KEY
 [ "${ELSEVIER_API_KEY+x}" = x ] && export ELSEVIER_API_KEY
 [ "${SCIENCE_DIGEST_FEEDBACK_SECRET+x}" = x ] && export SCIENCE_DIGEST_FEEDBACK_SECRET
+[ "${SCIENCE_DIGEST_LINKEDIN_SECRET+x}" = x ] && export SCIENCE_DIGEST_LINKEDIN_SECRET
 
 exec "$PYTHON_BIN" -m veille daily \
     --config "$CONFIG_PATH" \

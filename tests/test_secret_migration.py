@@ -200,7 +200,8 @@ password = {}
                 "OPENAI_API_KEY=combined-key\n"
                 "ELSEVIER_API_KEY=elsevier-key\n"
                 "SCIENCE_DIGEST_MAIL_PASSWORD=mail-key\n"
-                "SCIENCE_DIGEST_SMTP_PASSWORD=smtp-key\n",
+                "SCIENCE_DIGEST_SMTP_PASSWORD=smtp-key\n"
+                "SCIENCE_DIGEST_LINKEDIN_SECRET=linkedin-key\n",
                 encoding="utf-8",
             )
             python = Path(executable_directory) / "python"
@@ -221,6 +222,7 @@ exec() {
     printf '%s\n' "$SCIENCE_DIGEST_MAIL_PASSWORD" >> "$VEILLE_TEST_OUTPUT"
     printf '%s\n' "$SCIENCE_DIGEST_SMTP_PASSWORD" >> "$VEILLE_TEST_OUTPUT"
     printenv ELSEVIER_API_KEY >> "$VEILLE_TEST_OUTPUT"
+    printenv SCIENCE_DIGEST_LINKEDIN_SECRET >> "$VEILLE_TEST_OUTPUT"
 }
 source "$1"
 """
@@ -235,7 +237,7 @@ source "$1"
 
             self.assertEqual(
                 output.read_text(encoding="utf-8"),
-                "combined-key\nmail-key\nsmtp-key\nelsevier-key\n",
+                "combined-key\nmail-key\nsmtp-key\nelsevier-key\nlinkedin-key\n",
             )
 
     def test_daily_launcher_detects_python_when_not_explicitly_configured(self):

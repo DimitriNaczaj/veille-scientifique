@@ -20,7 +20,7 @@ Application de veille scientifique autonome et légère pour Synology DS218.
   bien-être lorsqu’aucun comportement ni aucune décision n’est mesuré ;
 - trois boutons de requalification dans chaque article retenu, validés par
   l’envoi d’un courriel signé puis conservés comme corpus de feedback ;
-- bouton de transmission signée d’un article vers le futur système de
+- bouton de transmission signée d’un article vers le système de
   préparation des publications LinkedIn ;
 - second tri et résumés français structurés via l’API OpenAI, lorsque configurée ;
 - déduplication persistante avec SQLite ;
@@ -37,7 +37,7 @@ Crossref ne contient pas un abstract pour chaque DOI. Pour Elsevier, l’applica
 utilise le PII présent dans les liens ScienceDirect et l’API officielle lorsqu’une
 clé est configurée. Le digest affiche uniquement les métadonnées réellement
 disponibles et signale les références encore provisoires.
-L’application ne télécharge pas les PDF et ne contourne aucun paywall.
+Pour une demande LinkedIn, l’application tente de télécharger une version PDF en accès ouvert indiquée par Unpaywall. Elle ne contourne aucun paywall. Si aucune copie ouverte n’est trouvée, elle demande l’ajout manuel d’une copie autorisée.
 
 Les évolutions envisagées pour la version 2 sont suivies dans
 [`TODO.md`](TODO.md).
@@ -367,17 +367,24 @@ propre à cette action. Le jeton contient uniquement l’identité de la
 publication. Il ne peut pas être remplacé par un jeton de requalification. La
 section `[linkedin]` et son secret restent indépendants de `[feedback]`.
 
-Le clic et l’envoi du courriel ne déclenchent aucun appel IA et ne publient
-rien. Le futur importeur du projet LinkedIn devra vérifier le jeton, retrouver
-les métadonnées de l’article dans la base SQLite de la veille, puis créer un
-dossier au statut `new`. L’IA interviendra seulement lorsque l’utilisateur
-demandera la génération du brouillon dans l’application LinkedIn.
+Le clic et l’envoi du courriel ne publient rien. Le travail `linkedin-worker`,
+prévu pour passer toutes les cinq minutes, vérifie l’expéditeur et le jeton,
+retrouve les métadonnées dans SQLite et tente de récupérer le PDF intégral en
+accès ouvert par Unpaywall. Il crée ensuite un dossier dans `[linkedin].output`.
+Le Mac extrait toutes les pages du PDF et génère `publication.md`. Si aucun PDF
+ouvert n’est disponible, le dossier attend l’ajout d’une copie autorisée.
 
-Si le feedback reste activé, les demandes sont téléchargées avec les autres
-messages du dossier et restent disponibles dans `feedback-inbox`. Si le
-feedback est désactivé, elles restent dans la boîte de réception jusqu’à la
-mise en place de l’importeur LinkedIn. Cet importeur possédera sa propre
-synchronisation et son propre suivi des messages.
+Si le feedback est activé et utilise le même dossier IMAP, les deux fonctions
+partagent les fichiers de `feedback-inbox` et une seule relève. Sinon,
+`[linkedin].folder` est synchronisé vers `[linkedin].inbox`. Chaque `Message-ID`
+est suivi dans SQLite et une publication déjà importée ne crée pas un second
+dossier. Une relève et un import manuels sont disponibles sans régénérer le digest :
+
+```bash
+python3 -m veille linkedin-worker \
+  --config veille-scientifique.ini \
+  --database data/veille.sqlite
+```
 
 ## Tests
 
@@ -437,8 +444,12 @@ tests, vérifie IMAP/SMTP et lance une recette `--no-ai --no-send` dans une base
 séparée. L’INI ne contient alors que le nom de la variable d’environnement. Il ne
 crée et n’active aucune tâche planifiée. Une relance réutilise le dossier et peut
 conserver la configuration privée existante. Lors d’une mise à jour, il ajoute si
-nécessaire la section `[feedback]`, le dossier local et un secret de signature
-aléatoire distinct du mot de passe de messagerie. En mode privé, le jeton GitHub n’est
+nécessaire les sections `[feedback]` et `[linkedin]`, leurs dossiers locaux et
+deux secrets de signature distincts du mot de passe de messagerie. Les demandes
+LinkedIn sont placées par défaut dans
+`/volume1/Bellegarde/linkedin-publisher/01 - À PRÉPARER` ; la variable
+`LINKEDIN_PREPARATION_ROOT` permet de choisir un autre dossier au lancement de
+l’assistant. En mode privé, le jeton GitHub n’est
 écrit dans aucun fichier et est supprimé de l’environnement du wizard dès la fin
 du téléchargement. Le même jeton peut servir aux mises à jour suivantes jusqu’à
 son expiration ; il suffit ensuite d’en créer un nouveau avec les mêmes droits.
@@ -451,11 +462,15 @@ son expiration ; il suffit ensuite d’en créer un nouveau avec les mêmes droi
 4. Copier l’exemple vers `veille-scientifique.ini`, renseigner les adresses et passer le fichier en mode `600`.
 5. Créer `secrets.env` avec la procédure de saisie masquée ci-dessous, puis le passer en mode `600` ; il est exclu de Git.
 6. Dans **Panneau de configuration → Planificateur de tâches**, créer une tâche quotidienne exécutée par un utilisateur dédié.
-7. Utiliser le lanceur fourni avec des chemins absolus :
+7. Créer une seconde tâche toutes les cinq minutes pour les demandes LinkedIn.
+8. Utiliser les lanceurs fournis avec des chemins absolus :
 
 ```bash
 VEILLE_ROOT=/volume1/Bellegarde/veille-scientifique \
 /volume1/Bellegarde/veille-scientifique/scripts/run-daily.sh
+
+VEILLE_INSTALL_DIR=/volume1/Bellegarde/veille-scientifique \
+/volume1/Bellegarde/veille-scientifique/scripts/run-linkedin-worker.sh
 ```
 
 Le lanceur détecte `python3.9` ou `python3` dans le `PATH`, puis les emplacements

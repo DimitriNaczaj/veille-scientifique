@@ -42,7 +42,14 @@ sync_limit = 50
 # Ce bouton reste indépendant de la période de requalification par feedback.
 enabled = true
 recipient = science-digest@example.org
+authorized_sender = consultant@example.org
+folder = INBOX
+inbox = /volume1/Bellegarde/veille-scientifique/feedback-inbox
+output = /volume1/Bellegarde/linkedin-publisher/01 - À PRÉPARER
 token_secret_env = SCIENCE_DIGEST_LINKEDIN_SECRET
+sync_limit = 50
+download_pdf = true
+max_pdf_mb = 30
 
 [app]
 inbox = /volume1/Bellegarde/veille-scientifique/inbox

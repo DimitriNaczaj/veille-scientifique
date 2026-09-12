@@ -3,6 +3,7 @@ import json
 import os
 import sys
 
+from .article_pdf import OpenAccessPdfFetcher
 from .crossref import CrossrefClient
 from .backfill import (
     build_backfill_plan,
@@ -22,6 +23,9 @@ from .feedback import export_feedback_csv, load_feedback_settings, run_feedback_
 from .feedback_review import export_feedback_review
 from .history import export_digest_history
 from .imap_sync import run_imap_sync
+from .linkedin_bridge import load_linkedin_settings
+from .linkedin_import import run_linkedin_import
+from .linkedin_worker import run_linkedin_worker
 from .mbox_import import run_mbox_import
 from .mail_diagnostics import run_imap_diagnostic, run_smtp_diagnostic
 from .pipeline import run_pipeline
@@ -128,6 +132,18 @@ def build_parser():
     )
     feedback_import.add_argument("--config", required=True)
     feedback_import.add_argument("--database", required=True)
+    linkedin_import = subparsers.add_parser(
+        "linkedin-import",
+        help="Importer les demandes LinkedIn déjà synchronisées",
+    )
+    linkedin_import.add_argument("--config", required=True)
+    linkedin_import.add_argument("--database", required=True)
+    linkedin_worker = subparsers.add_parser(
+        "linkedin-worker",
+        help="Relever puis importer les demandes LinkedIn sans générer de digest",
+    )
+    linkedin_worker.add_argument("--config", required=True)
+    linkedin_worker.add_argument("--database", required=True)
     feedback_export = subparsers.add_parser(
         "feedback-export",
         help="Exporter le corpus de requalifications en CSV",
@@ -378,6 +394,35 @@ def main(
                 args.database,
                 authorized_sender=settings.authorized_sender,
                 token_secret=settings.token_secret,
+            )
+        elif args.command == "linkedin-import":
+            settings = load_linkedin_settings(args.config)
+            if settings is None:
+                raise ValueError("Le transfert LinkedIn est désactivé dans [linkedin].")
+            if not settings.inbox or not settings.output or not settings.authorized_sender:
+                raise ValueError("La configuration d’import LinkedIn est incomplète.")
+            report = run_linkedin_import(
+                settings.inbox,
+                args.database,
+                settings.output,
+                authorized_sender=settings.authorized_sender,
+                token_secret=settings.token_secret,
+                pdf_fetcher=(
+                    OpenAccessPdfFetcher(
+                        settings.recipient,
+                        max_bytes=settings.max_pdf_mb * 1024 * 1024,
+                        opener=http_opener,
+                    )
+                    if settings.download_pdf
+                    else None
+                ),
+            )
+        elif args.command == "linkedin-worker":
+            report = run_linkedin_worker(
+                args.config,
+                args.database,
+                imap_factory=imap_factory,
+                http_opener=http_opener,
             )
         elif args.command == "feedback-export":
             report = export_feedback_csv(args.database, args.output)

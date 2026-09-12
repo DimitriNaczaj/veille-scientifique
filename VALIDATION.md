@@ -1,5 +1,15 @@
 # Validation sur le corpus local
 
+## Version 0.16.0 : 12 septembre 2026
+
+- 247 tests automatisés réussis sous Python 3.14 ;
+- une demande signée crée un dossier de préparation complet, avec brief,
+  fiche de l'article et courriel d'origine ;
+- un `Message-ID` déjà traité ne crée pas un second dossier ;
+- le téléchargement du PDF est limité aux URL HTTPS publiques signalées par
+  Unpaywall, avec plafond de taille et contrôle de l'en-tête `%PDF-` ;
+- sans copie ouverte, le dossier réclame l'ajout manuel d'une copie autorisée.
+
 ## Version 0.15.0 : 12 septembre 2026
 
 - 235 tests automatisés réussis sous Python 3.14 ;

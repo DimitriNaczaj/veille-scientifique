@@ -244,6 +244,9 @@ def format_daily_report(report):
     feedback = report.get("feedback") or {"enabled": False}
     feedback_sync = feedback.get("sync") or {}
     feedback_import = feedback.get("import") or {}
+    linkedin = report.get("linkedin") or {"enabled": False}
+    linkedin_sync = linkedin.get("sync") or {}
+    linkedin_import = linkedin.get("import") or {}
     pipeline = report.get("pipeline") or {}
     input_tokens = int(pipeline.get("ai_input_tokens") or 0)
     output_tokens = int(pipeline.get("ai_output_tokens") or 0)
@@ -252,6 +255,7 @@ def format_daily_report(report):
         sync.get("warnings"),
         pipeline.get("warnings"),
         feedback_import.get("warnings"),
+        linkedin_import.get("warnings"),
     )
     errors = _unique_messages(
         report.get("errors"),
@@ -286,6 +290,16 @@ def format_daily_report(report):
         ),
         _row("Validations importées", feedback_import.get("accepted") or 0),
         _row("Validations rejetées", feedback_import.get("rejected") or 0),
+        "",
+        "LINKEDIN",
+        "--------",
+        _row("Activé", "oui" if linkedin.get("enabled") else "non"),
+        _row(
+            "Dossier de demandes",
+            linkedin_sync.get("folder") or "non renseigné",
+        ),
+        _row("Demandes importées", linkedin_import.get("accepted") or 0),
+        _row("Demandes rejetées", linkedin_import.get("rejected") or 0),
         "",
         "TRAITEMENT",
         "----------",

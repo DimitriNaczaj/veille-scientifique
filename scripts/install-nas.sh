@@ -330,6 +330,7 @@ done
 cp -R "$SOURCE_DIR"/. "$INSTALL_ROOT"/
 chmod +x \
   "$INSTALL_ROOT/scripts/run-daily.sh" \
+  "$INSTALL_ROOT/scripts/run-linkedin-worker.sh" \
   "$INSTALL_ROOT/scripts/run-backfill.sh" \
   "$INSTALL_ROOT/scripts/run-classify.sh" \
   "$INSTALL_ROOT/scripts/run-refresh.sh" \
@@ -342,6 +343,8 @@ mkdir -p \
   "$INSTALL_ROOT/import" \
   "$INSTALL_ROOT/feedback-inbox" \
   "$INSTALL_ROOT/smoke"
+LINKEDIN_PREPARATION_ROOT="${LINKEDIN_PREPARATION_ROOT:-$(dirname "$INSTALL_ROOT")/linkedin-publisher/01 - À PRÉPARER}"
+mkdir -p "$LINKEDIN_PREPARATION_ROOT"
 if [[ "$DOWNLOAD_MODE" == "public" ]]; then
   say "Projet public installé depuis GitHub ; aucun jeton n’a été demandé."
 else
@@ -455,13 +458,49 @@ if ! grep -q '^\[linkedin\]$' "$CONFIG_PATH"; then
   LINKEDIN_RECIPIENT=$("$PYTHON_BIN" -c \
     'import configparser, sys; c=configparser.ConfigParser(interpolation=None); c.read(sys.argv[1], encoding="utf-8"); print(c.get("imap", "username"))' \
     "$CONFIG_PATH")
+  LINKEDIN_AUTHORIZED_SENDER=$("$PYTHON_BIN" -c \
+    'import configparser, sys; c=configparser.ConfigParser(interpolation=None); c.read(sys.argv[1], encoding="utf-8"); print(c.get("digest", "recipient"))' \
+    "$CONFIG_PATH")
   {
     printf '\n%s\n' '[linkedin]' 'enabled = true'
-    printf 'recipient = %s\n' "$LINKEDIN_RECIPIENT"
-    printf '%s\n' 'token_secret_env = SCIENCE_DIGEST_LINKEDIN_SECRET'
+    printf 'recipient = %s\nauthorized_sender = %s\n' \
+      "$LINKEDIN_RECIPIENT" "$LINKEDIN_AUTHORIZED_SENDER"
+    printf '%s\n' 'folder = INBOX'
+    printf 'inbox = %s/feedback-inbox\noutput = %s\n' \
+      "$INSTALL_ROOT" "$LINKEDIN_PREPARATION_ROOT"
+    printf '%s\n' 'token_secret_env = SCIENCE_DIGEST_LINKEDIN_SECRET' 'sync_limit = 50' 'download_pdf = true' 'max_pdf_mb = 30'
   } >> "$CONFIG_PATH"
   say "Transmission des articles vers LinkedIn activée."
 fi
+"$PYTHON_BIN" -c '
+import configparser
+import os
+import sys
+
+path, install_root, output = sys.argv[1:]
+config = configparser.ConfigParser(interpolation=None)
+config.read(path, encoding="utf-8")
+section = config["linkedin"]
+defaults = {
+    "authorized_sender": config["digest"].get("recipient", ""),
+    "folder": "INBOX",
+    "inbox": os.path.join(install_root, "feedback-inbox"),
+    "output": output,
+    "token_secret_env": "SCIENCE_DIGEST_LINKEDIN_SECRET",
+    "sync_limit": "50",
+    "download_pdf": "true",
+    "max_pdf_mb": "30",
+}
+changed = False
+for key, value in defaults.items():
+    if not section.get(key, "").strip():
+        section[key] = value
+        changed = True
+if changed:
+    with open(path, "w", encoding="utf-8") as stream:
+        config.write(stream)
+' \
+  "$CONFIG_PATH" "$INSTALL_ROOT" "$LINKEDIN_PREPARATION_ROOT"
 chmod 600 "$CONFIG_PATH"
 if [[ "$REUSE_CONFIG" == true ]]; then
   (
@@ -555,6 +594,10 @@ TASK_COMMAND_FILE="$INSTALL_ROOT/DSM_TASK_COMMAND.txt"
 printf "VEILLE_ROOT='%s' PYTHON_BIN='%s' '%s/scripts/run-daily.sh'\n" \
   "$INSTALL_ROOT" "$PYTHON_BIN" "$INSTALL_ROOT" > "$TASK_COMMAND_FILE"
 chmod 600 "$TASK_COMMAND_FILE"
+LINKEDIN_TASK_COMMAND_FILE="$INSTALL_ROOT/DSM_LINKEDIN_TASK_COMMAND.txt"
+printf "VEILLE_INSTALL_DIR='%s' PYTHON_BIN='%s' '%s/scripts/run-linkedin-worker.sh'\n" \
+  "$INSTALL_ROOT" "$PYTHON_BIN" "$INSTALL_ROOT" > "$LINKEDIN_TASK_COMMAND_FILE"
+chmod 600 "$LINKEDIN_TASK_COMMAND_FILE"
 BACKFILL_TASK_COMMAND_FILE="$INSTALL_ROOT/DSM_BACKFILL_TASK_COMMAND.txt"
 printf "VEILLE_ROOT='%s' PYTHON_BIN='%s' '%s/scripts/run-backfill.sh'\n" \
   "$INSTALL_ROOT" "$PYTHON_BIN" "$INSTALL_ROOT" > "$BACKFILL_TASK_COMMAND_FILE"
@@ -565,6 +608,7 @@ printf "VEILLE_ROOT='%s' PYTHON_BIN='%s' '%s/scripts/run-classify.sh'\n" \
 chmod 600 "$CLASSIFY_COMMAND_FILE"
 step "Après sécurisation des secrets, ouvrez DSM → Panneau de configuration → Planificateur de tâches."
 step "Créez une tâche définie par l’utilisateur et copiez la commande de $TASK_COMMAND_FILE."
+step "Créez une seconde tâche toutes les cinq minutes avec la commande de $LINKEDIN_TASK_COMMAND_FILE."
 warn "N’activez pas encore cette tâche : nous sécuriserons d’abord le mot de passe et ajouterons les clés OpenAI et Elsevier."
 
 finish

@@ -2,6 +2,7 @@ import os
 from dataclasses import dataclass
 
 from .ai import OpenAIAnalyzer
+from .article_pdf import OpenAccessPdfFetcher
 from .crossref import CrossrefClient
 from .delivery import SMTPDigestSender
 from .elsevier import elsevier_client_from_config
@@ -10,6 +11,7 @@ from .openalex import openalex_client_from_config
 from .filtering import BehavioralScienceFilter
 from .feedback import load_feedback_settings, run_feedback_import
 from .linkedin_bridge import load_linkedin_settings
+from .linkedin_import import run_linkedin_import
 from .imap_sync import run_imap_sync
 from .mail_diagnostics import _load_config, load_imap_settings
 from .pipeline import run_pipeline
@@ -26,6 +28,8 @@ class DailyReport:
     daily_warnings: tuple
     feedback_sync_report: object = None
     feedback_import_report: object = None
+    linkedin_sync_report: object = None
+    linkedin_import_report: object = None
 
     @property
     def errors(self):
@@ -34,8 +38,15 @@ class DailyReport:
             if self.feedback_sync_report is not None
             else ()
         )
+        linkedin_errors = (
+            tuple(self.linkedin_sync_report.errors)
+            if self.linkedin_sync_report is not None
+            and self.linkedin_sync_report is not self.feedback_sync_report
+            else ()
+        )
         return (
             feedback_errors
+            + linkedin_errors
             + tuple(self.sync_report.errors)
             + tuple(self.pipeline_report.errors)
         )
@@ -52,6 +63,15 @@ class DailyReport:
                     "import": self.feedback_import_report.as_dict(),
                 }
                 if self.feedback_sync_report is not None
+                else {"enabled": False}
+            ),
+            "linkedin": (
+                {
+                    "enabled": True,
+                    "sync": self.linkedin_sync_report.as_dict(),
+                    "import": self.linkedin_import_report.as_dict(),
+                }
+                if self.linkedin_import_report is not None
                 else {"enabled": False}
             ),
             "pipeline": self.pipeline_report.as_dict(),
@@ -200,6 +220,59 @@ def run_daily(
         )
         warnings.extend(feedback_import_report.warnings)
 
+    linkedin_sync_report = None
+    linkedin_import_report = None
+    if linkedin_settings is not None:
+        missing = []
+        if not linkedin_settings.inbox:
+            missing.append("linkedin.inbox")
+        if not linkedin_settings.output:
+            missing.append("linkedin.output")
+        if not linkedin_settings.authorized_sender:
+            missing.append("linkedin.authorized_sender")
+        if missing:
+            warnings.append(
+                "Import LinkedIn désactivé : option(s) absente(s) {}.".format(
+                    ", ".join(missing)
+                )
+            )
+        else:
+            shares_feedback_sync = (
+                feedback_settings is not None
+                and feedback_settings.folder == linkedin_settings.folder
+            )
+            if shares_feedback_sync:
+                linkedin_sync_report = feedback_sync_report
+                linkedin_import_inbox = feedback_settings.inbox
+            else:
+                linkedin_sync_report = run_imap_sync(
+                    config_path,
+                    linkedin_settings.inbox,
+                    database,
+                    limit=linkedin_settings.sync_limit,
+                    initial_mode="latest",
+                    client_factory=imap_factory,
+                    folder=linkedin_settings.folder,
+                )
+                linkedin_import_inbox = linkedin_settings.inbox
+            linkedin_import_report = run_linkedin_import(
+                linkedin_import_inbox,
+                database,
+                linkedin_settings.output,
+                authorized_sender=linkedin_settings.authorized_sender,
+                token_secret=linkedin_settings.token_secret,
+                pdf_fetcher=(
+                    OpenAccessPdfFetcher(
+                        contact_email,
+                        max_bytes=linkedin_settings.max_pdf_mb * 1024 * 1024,
+                        opener=http_opener,
+                    )
+                    if linkedin_settings.download_pdf
+                    else None
+                ),
+            )
+            warnings.extend(linkedin_import_report.warnings)
+
     sync_report = run_imap_sync(
         config_path,
         inbox,
@@ -230,4 +303,6 @@ def run_daily(
         daily_warnings=tuple(warnings),
         feedback_sync_report=feedback_sync_report,
         feedback_import_report=feedback_import_report,
+        linkedin_sync_report=linkedin_sync_report,
+        linkedin_import_report=linkedin_import_report,
     )

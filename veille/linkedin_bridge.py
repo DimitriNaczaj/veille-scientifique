@@ -19,6 +19,13 @@ class LinkedinBridgeSettings:
     enabled: bool
     recipient: str
     token_secret: str
+    authorized_sender: str = ""
+    folder: str = "INBOX"
+    inbox: str = ""
+    output: str = ""
+    sync_limit: int = 50
+    download_pdf: bool = True
+    max_pdf_mb: int = 30
 
 
 def load_linkedin_settings(path):
@@ -36,10 +43,43 @@ def load_linkedin_settings(path):
         recipient = config.get("imap", "username", fallback="").strip()
     if not recipient:
         raise ValueError("Option linkedin.recipient absente de la configuration.")
+    authorized_sender = config.get(
+        "linkedin", "authorized_sender", fallback=""
+    ).strip()
+    if not authorized_sender:
+        authorized_sender = config.get("digest", "recipient", fallback="").strip()
+    folder = config.get("linkedin", "folder", fallback="INBOX").strip() or "INBOX"
+    inbox = config.get("linkedin", "inbox", fallback="").strip()
+    if not inbox and config.has_section("feedback"):
+        inbox = config.get("feedback", "inbox", fallback="").strip()
+    output = config.get("linkedin", "output", fallback="").strip()
+    try:
+        sync_limit = config.getint("linkedin", "sync_limit", fallback=50)
+    except ValueError:
+        raise ValueError("Option linkedin.sync_limit invalide.") from None
+    if sync_limit < 1 or sync_limit > 1000:
+        raise ValueError("La limite LinkedIn doit être comprise entre 1 et 1000.")
+    try:
+        download_pdf = config.getboolean("linkedin", "download_pdf", fallback=True)
+    except ValueError:
+        raise ValueError("Option linkedin.download_pdf invalide.") from None
+    try:
+        max_pdf_mb = config.getint("linkedin", "max_pdf_mb", fallback=30)
+    except ValueError:
+        raise ValueError("Option linkedin.max_pdf_mb invalide.") from None
+    if max_pdf_mb < 1 or max_pdf_mb > 200:
+        raise ValueError("La taille PDF maximale doit être comprise entre 1 et 200 Mo.")
     return LinkedinBridgeSettings(
         enabled=True,
         recipient=recipient,
         token_secret=_secret(config, "linkedin", "token_secret"),
+        authorized_sender=authorized_sender,
+        folder=folder,
+        inbox=inbox,
+        output=output,
+        sync_limit=sync_limit,
+        download_pdf=download_pdf,
+        max_pdf_mb=max_pdf_mb,
     )
 
 

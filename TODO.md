@@ -3,6 +3,13 @@
 - [ ] Ajouter, pour chaque auteur, un lien vers sa recherche Google Scholar.
 - [x] Remplacer la note IA globale par une grille de critères explicites et auditables.
 
+## Livré en version 0.16.0
+
+- [x] Relever les demandes LinkedIn signées et créer le dossier de préparation.
+- [x] Récupérer le PDF intégral quand Unpaywall signale une copie en accès ouvert.
+- [x] Suivre chaque `Message-ID` dans SQLite pour ne pas créer un second dossier.
+- [x] Rendre la relève et l'import disponibles sans régénérer le digest.
+
 ## Livré en version 0.15.0
 
 - [x] Ajouter au digest un bouton signé « Préparer un post LinkedIn ».

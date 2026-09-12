@@ -28,6 +28,8 @@ username = science-digest@example.org
 enabled = true
 recipient = science-digest@example.org
 token_secret = linkedin-secret
+inbox = /tmp/feedback-inbox
+output = /tmp/linkedin/01 - À PRÉPARER
 """,
                 encoding="utf-8",
             )
@@ -37,6 +39,30 @@ token_secret = linkedin-secret
             self.assertTrue(settings.enabled)
             self.assertEqual(settings.recipient, "science-digest@example.org")
             self.assertEqual(settings.token_secret, "linkedin-secret")
+            self.assertEqual(settings.authorized_sender, "")
+            self.assertEqual(settings.folder, "INBOX")
+            self.assertEqual(settings.inbox, "/tmp/feedback-inbox")
+            self.assertEqual(settings.output, "/tmp/linkedin/01 - À PRÉPARER")
+            self.assertTrue(settings.download_pdf)
+            self.assertEqual(settings.max_pdf_mb, 30)
+
+    def test_rejects_an_invalid_pdf_size(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "veille.ini"
+            config.write_text(
+                """[imap]
+username = science-digest@example.org
+
+[linkedin]
+enabled = true
+token_secret = secret
+max_pdf_mb = 0
+""",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "taille PDF"):
+                load_linkedin_settings(config)
 
     def test_builds_a_signed_mailto_request(self):
         link = linkedin_request_mailto(

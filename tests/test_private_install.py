@@ -59,6 +59,10 @@ class PrivateInstallerTests(unittest.TestCase):
         self.assertIn(
             "token_secret_env = SCIENCE_DIGEST_LINKEDIN_SECRET", example
         )
+        self.assertIn(
+            '"token_secret_env": "SCIENCE_DIGEST_LINKEDIN_SECRET"', script
+        )
+        self.assertIn("LINKEDIN_PREPARATION_ROOT", script)
 
     def test_readme_bootstrap_hides_and_clears_the_private_token(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

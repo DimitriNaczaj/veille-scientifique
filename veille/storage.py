@@ -130,6 +130,23 @@ CREATE TABLE IF NOT EXISTS publication_feedback_messages (
 CREATE INDEX IF NOT EXISTS idx_publication_feedback_identity
 ON publication_feedback_messages(publication_identity, id);
 
+CREATE TABLE IF NOT EXISTS linkedin_request_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_identity TEXT NOT NULL UNIQUE,
+    source_path TEXT NOT NULL,
+    sender TEXT NOT NULL,
+    received_at TEXT,
+    publication_identity TEXT REFERENCES publications(identity),
+    destination TEXT,
+    status TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    recorded_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_linkedin_request_active_publication
+ON linkedin_request_messages(publication_identity)
+WHERE status IN ('pending', 'accepted');
+
 CREATE TABLE IF NOT EXISTS digest_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     kind TEXT NOT NULL,
@@ -154,7 +171,7 @@ CREATE TABLE IF NOT EXISTS digest_run_articles (
 CREATE INDEX IF NOT EXISTS idx_digest_run_articles_publication
 ON digest_run_articles(publication_identity);
 """
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 _AI_ASSESSMENT_RESULT_COLUMNS = (
     "relevant",
@@ -643,6 +660,144 @@ class Store:
             "WHERE status = 'accepted'"
         ).fetchone()[0]
 
+    def linkedin_request(self, message_identity):
+        row = self.connection.execute(
+            "SELECT status, publication_identity, destination "
+            "FROM linkedin_request_messages WHERE message_identity = ?",
+            (message_identity,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "status": row[0],
+            "publication_identity": row[1],
+            "destination": row[2],
+        }
+
+    def reserve_linkedin_request(
+        self,
+        message_identity,
+        source_path,
+        sender,
+        publication_identity,
+        destination,
+        received_at=None,
+    ):
+        with self.connection:
+            existing_message = self.linkedin_request(message_identity)
+            if existing_message is not None:
+                return existing_message["status"]
+            existing_publication = self.connection.execute(
+                "SELECT 1 FROM linkedin_request_messages "
+                "WHERE publication_identity = ? "
+                "AND status IN ('pending', 'accepted')",
+                (publication_identity,),
+            ).fetchone()
+            if existing_publication is not None:
+                self.connection.execute(
+                    "INSERT INTO linkedin_request_messages("
+                    "message_identity, source_path, sender, received_at, "
+                    "publication_identity, destination, status, reason, recorded_at"
+                    ") VALUES (?, ?, ?, ?, ?, NULL, 'duplicate', ?, ?)",
+                    (
+                        message_identity,
+                        str(source_path),
+                        sender,
+                        received_at,
+                        publication_identity,
+                        "Article déjà importé par une autre demande.",
+                        _utc_now(),
+                    ),
+                )
+                return "duplicate"
+            self.connection.execute(
+                "INSERT INTO linkedin_request_messages("
+                "message_identity, source_path, sender, received_at, "
+                "publication_identity, destination, status, reason, recorded_at"
+                ") VALUES (?, ?, ?, ?, ?, ?, 'pending', '', ?)",
+                (
+                    message_identity,
+                    str(source_path),
+                    sender,
+                    received_at,
+                    publication_identity,
+                    str(destination),
+                    _utc_now(),
+                ),
+            )
+        return "pending"
+
+    def complete_linkedin_request(self, message_identity, destination):
+        with self.connection:
+            self.connection.execute(
+                "UPDATE linkedin_request_messages SET status = 'accepted', "
+                "destination = ?, reason = '' WHERE message_identity = ?",
+                (str(destination), message_identity),
+            )
+
+    def note_linkedin_request_error(self, message_identity, reason):
+        with self.connection:
+            self.connection.execute(
+                "UPDATE linkedin_request_messages SET reason = ? "
+                "WHERE message_identity = ? AND status = 'pending'",
+                (reason, message_identity),
+            )
+
+    def update_pending_linkedin_destination(self, message_identity, destination):
+        with self.connection:
+            self.connection.execute(
+                "UPDATE linkedin_request_messages SET destination = ? "
+                "WHERE message_identity = ? AND status = 'pending'",
+                (str(destination), message_identity),
+            )
+
+    def linkedin_duplicate_destinations(self):
+        return tuple(
+            self.connection.execute(
+                "SELECT message_identity, destination, reason "
+                "FROM linkedin_request_messages "
+                "WHERE status = 'duplicate' AND destination IS NOT NULL"
+            ).fetchall()
+        )
+
+    def update_linkedin_request_destination(self, message_identity, destination):
+        with self.connection:
+            self.connection.execute(
+                "UPDATE linkedin_request_messages SET destination = ? "
+                "WHERE message_identity = ?",
+                (str(destination), message_identity),
+            )
+
+    def record_linkedin_request_message(
+        self,
+        message_identity,
+        source_path,
+        sender,
+        status,
+        reason,
+        publication_identity=None,
+        received_at=None,
+    ):
+        if status not in ("rejected", "ignored"):
+            raise ValueError("Statut de demande LinkedIn invalide.")
+        with self.connection:
+            self.connection.execute(
+                "INSERT OR IGNORE INTO linkedin_request_messages("
+                "message_identity, source_path, sender, received_at, "
+                "publication_identity, destination, status, reason, recorded_at"
+                ") VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)",
+                (
+                    message_identity,
+                    str(source_path),
+                    sender,
+                    received_at,
+                    publication_identity,
+                    status,
+                    reason,
+                    _utc_now(),
+                ),
+            )
+
     def feedback_export_rows(self):
         rows = self.connection.execute(
             "SELECT f.id, f.publication_identity, "
@@ -904,6 +1059,25 @@ class Store:
         )
         self.connection.execute(
             "UPDATE publication_feedback_messages SET publication_identity = ? "
+            "WHERE publication_identity = ?",
+            (candidate.identity, provisional_identity),
+        )
+        canonical_linkedin_request = self.connection.execute(
+            "SELECT 1 FROM linkedin_request_messages "
+            "WHERE publication_identity = ? "
+            "AND status IN ('pending', 'accepted')",
+            (candidate.identity,),
+        ).fetchone()
+        if canonical_linkedin_request is not None:
+            self.connection.execute(
+                "UPDATE linkedin_request_messages SET status = 'duplicate', "
+                "reason = 'Article fusionné avec une demande déjà importée.' "
+                "WHERE publication_identity = ? "
+                "AND status IN ('pending', 'accepted')",
+                (provisional_identity,),
+            )
+        self.connection.execute(
+            "UPDATE linkedin_request_messages SET publication_identity = ? "
             "WHERE publication_identity = ?",
             (candidate.identity, provisional_identity),
         )
