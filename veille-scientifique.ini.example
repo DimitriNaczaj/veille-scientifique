@@ -19,7 +19,8 @@ from_address = science-digest@example.org
 test_recipient = science-digest@example.org
 
 [digest]
-recipient = consultant@example.org
+# Plusieurs adresses peuvent être séparées par des virgules.
+recipient = consultant@example.org, collegue@example.org
 from_address = science-digest@example.org
 subject_prefix = Veille scientifique Bellegarde
 # Désactivé par défaut pour limiter le poids du courriel. Le bouton Zotero
@@ -31,7 +32,7 @@ attach_ris = false
 # messages envoyés par le destinataire du digest sont acceptés.
 enabled = true
 recipient = science-digest@example.org
-authorized_sender = consultant@example.org
+authorized_sender = consultant@example.org, collegue@example.org
 folder = INBOX
 inbox = /volume1/Bellegarde/veille-scientifique/feedback-inbox
 output = /volume1/Bellegarde/veille-scientifique/out/feedback.csv
@@ -42,7 +43,7 @@ sync_limit = 50
 # Ce bouton reste indépendant de la période de requalification par feedback.
 enabled = true
 recipient = science-digest@example.org
-authorized_sender = consultant@example.org
+authorized_sender = consultant@example.org, collegue@example.org
 folder = INBOX
 inbox = /volume1/Bellegarde/veille-scientifique/feedback-inbox
 output = /volume1/Bellegarde/linkedin-publisher/01 - À PRÉPARER

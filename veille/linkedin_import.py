@@ -26,6 +26,7 @@ from .linkedin_bridge import (
     LINKEDIN_REQUEST_SUBJECT,
     linkedin_request_identity,
 )
+from .mail_diagnostics import parse_email_addresses
 from .storage import Store
 
 
@@ -283,7 +284,10 @@ def run_linkedin_import(
         raise ValueError("Le dossier de relève LinkedIn est absent ou symbolique.")
     if output_path.is_symlink():
         raise ValueError("Le dossier LinkedIn ne peut pas être un lien symbolique.")
-    if not authorized_sender.strip():
+    authorized_senders = {
+        address.casefold() for address in parse_email_addresses(authorized_sender)
+    }
+    if not authorized_senders:
         raise ValueError("L’expéditeur LinkedIn autorisé est absent.")
     if not token_secret:
         raise ValueError("Le secret LinkedIn est absent.")
@@ -329,7 +333,7 @@ def run_linkedin_import(
                     )
                     ignored += 1
                     continue
-                if sender.casefold() != authorized_sender.strip().casefold():
+                if sender.casefold() not in authorized_senders:
                     raise ValueError(
                         "Expéditeur non autorisé : {}.".format(sender or "absent")
                     )

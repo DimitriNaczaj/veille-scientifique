@@ -7,6 +7,7 @@ import ssl
 from contextlib import contextmanager
 from dataclasses import dataclass
 from email.message import EmailMessage
+from email.utils import getaddresses
 from pathlib import Path
 
 
@@ -107,6 +108,15 @@ def _safe_error(error, password):
     if password:
         message = message.replace(password, "[secret masqué]")
     return message
+
+
+def parse_email_addresses(value):
+    """Return normalized addresses from a comma- or line-separated setting."""
+    return tuple(
+        address.strip()
+        for _name, address in getaddresses((str(value or "").replace("\n", ","),))
+        if address.strip()
+    )
 
 
 def create_imap_client(settings, client_factory=None):

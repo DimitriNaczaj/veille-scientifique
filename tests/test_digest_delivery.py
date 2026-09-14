@@ -146,6 +146,37 @@ class DigestDeliveryTests(unittest.TestCase):
                 )
             )
 
+    def test_sends_digest_to_multiple_comma_separated_recipients(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "veille.ini"
+            digest = root / "digest.html"
+            digest.write_text("<html><body>Veille</body></html>", encoding="utf-8")
+            write_config(config)
+            content = config.read_text(encoding="utf-8").replace(
+                "recipient = consultant@bellegarde.example",
+                "recipient = consultant@bellegarde.example, eric@bellegarde.example",
+            )
+            config.write_text(content, encoding="utf-8")
+            publication = NewPublication(
+                identity="doi:10.1234/test",
+                doi="10.1234/test",
+                title="Article",
+                url=None,
+                source_subject="Newsletter",
+                source_sender="alerts@example.org",
+                priority=PublicationPriority.HIGH,
+            )
+
+            sender = SMTPDigestSender(config, smtp_factory=FakeSMTP)
+            sender.send(digest, (publication,))
+
+            message = FakeSMTP.instances[0].messages[0]
+            self.assertEqual(
+                message["To"],
+                "consultant@bellegarde.example, eric@bellegarde.example",
+            )
+
     def test_attaches_ris_only_when_enabled(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

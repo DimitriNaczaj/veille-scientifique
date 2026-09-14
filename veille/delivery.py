@@ -11,6 +11,7 @@ from .mail_diagnostics import (
     _safe_error,
     create_tls_context,
     load_smtp_settings,
+    parse_email_addresses,
 )
 from .citations import RIS_FILENAME, RIS_MEDIA_TYPE, render_ris
 from .feedback import feedback_mailto, load_feedback_settings
@@ -37,13 +38,18 @@ def load_digest_delivery_settings(path):
     config = _load_config(path)
     if not config.has_section("digest"):
         raise ValueError("Section [digest] absente de la configuration.")
-    recipient = config.get("digest", "recipient", fallback="").strip()
-    if not recipient:
+    configured_recipient = config.get("digest", "recipient", fallback="").strip()
+    recipients = parse_email_addresses(configured_recipient)
+    if not recipients:
         raise ValueError("Option digest.recipient absente de la configuration.")
+    recipient = ", ".join(recipients)
     smtp = load_smtp_settings(path)
-    if recipient.casefold() == smtp.test_recipient.casefold():
+    if smtp.test_recipient.casefold() in {
+        address.casefold() for address in recipients
+    }:
         raise ValueError(
-            "Le destinataire du digest doit être distinct du destinataire de test SMTP."
+            "Les destinataires du digest doivent être distincts du destinataire "
+            "de test SMTP."
         )
     try:
         attach_ris = config.getboolean("digest", "attach_ris", fallback=False)

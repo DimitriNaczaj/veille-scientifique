@@ -37,10 +37,14 @@ def add_publication(database):
         store.close()
 
 
-def request_email(path, message_id="<linkedin-request@example.org>"):
+def request_email(
+    path,
+    message_id="<linkedin-request@example.org>",
+    sender="consultant@example.org",
+):
     message = EmailMessage()
     message["Message-ID"] = message_id
-    message["From"] = "consultant@example.org"
+    message["From"] = sender
     message["To"] = "science-digest@example.org"
     message["Subject"] = "[Veille vers LinkedIn] An article for LinkedIn"
     message.set_content(
@@ -51,6 +55,28 @@ def request_email(path, message_id="<linkedin-request@example.org>"):
 
 
 class LinkedinImportTests(unittest.TestCase):
+    def test_accepts_request_from_any_configured_digest_recipient(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "feedback-inbox"
+            output = root / "01 - À PRÉPARER"
+            inbox.mkdir()
+            database = root / "veille.sqlite"
+            add_publication(database)
+            request_email(inbox / "request.eml", sender="eric@example.org")
+
+            report = run_linkedin_import(
+                inbox,
+                database,
+                output,
+                authorized_sender="consultant@example.org, eric@example.org",
+                token_secret=SECRET,
+                pdf_fetcher=None,
+            )
+
+            self.assertEqual(report.accepted, 1)
+            self.assertEqual(report.rejected, 0)
+
     def test_downloads_the_full_article_into_the_preparation_package(self):
         class PdfFetcher:
             def fetch(self, doi, destination):

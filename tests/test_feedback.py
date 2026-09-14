@@ -131,6 +131,31 @@ class FeedbackTests(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_accepts_validation_from_any_configured_digest_recipient(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "feedback"
+            inbox.mkdir()
+            database = root / "veille.sqlite"
+            add_publication(database)
+            token = create_feedback_token(IDENTITY, SECRET)
+            validation_email(
+                inbox / "second-recipient.eml",
+                "high",
+                token,
+                sender="eric@example.org",
+            )
+
+            report = run_feedback_import(
+                inbox,
+                database,
+                authorized_sender="consultant@example.org, eric@example.org",
+                token_secret=SECRET,
+            )
+
+            self.assertEqual(report.accepted, 1)
+            self.assertEqual(report.rejected, 0)
+
     def test_imports_validation_with_smtp_crlf_line_endings(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

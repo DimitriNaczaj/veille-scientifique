@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from .atomic import atomic_open
-from .mail_diagnostics import _load_config, _secret
+from .mail_diagnostics import _load_config, _secret, parse_email_addresses
 from .models import PublicationPriority
 from .storage import Store
 
@@ -272,6 +272,9 @@ def run_feedback_import(inbox, database, authorized_sender, token_secret):
     ignored = 0
     already_processed = 0
     warnings = []
+    authorized_senders = {
+        address.casefold() for address in parse_email_addresses(authorized_sender)
+    }
     store = Store(database)
     try:
         for message_path in sorted(
@@ -318,7 +321,7 @@ def run_feedback_import(inbox, database, authorized_sender, token_secret):
                 ignored += 1
                 continue
             try:
-                if sender.casefold() != authorized_sender.casefold():
+                if sender.casefold() not in authorized_senders:
                     raise ValueError("Expéditeur non autorisé : {}.".format(sender or "absent"))
                 choice = _field(body, "choice")
                 if choice not in {priority.value for priority in FEEDBACK_PRIORITIES}:

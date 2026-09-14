@@ -209,6 +209,26 @@ PRIVATE_REPOSITORY_ARCHIVE="https://api.github.com/repos/DimitriNaczaj/veille-sc
 export -n GITHUB_TOKEN 2>/dev/null || true
 umask 077
 
+normalize_digest_recipients() {
+  "$PYTHON_BIN" -c '
+import sys
+from email.utils import getaddresses
+
+value, test_recipient = sys.argv[1:]
+addresses = [address.strip() for _name, address in getaddresses((value,)) if address.strip()]
+invalid = not addresses
+for address in addresses:
+    local, separator, domain = address.rpartition("@")
+    if not local or separator != "@" or not domain or any(character.isspace() for character in address):
+        invalid = True
+if invalid:
+    raise SystemExit(1)
+if test_recipient.casefold() in {address.casefold() for address in addresses}:
+    raise SystemExit(2)
+print(", ".join(addresses))
+' "$1" "$2"
+}
+
 banner "Installation NAS · Veille scientifique Bellegarde"
 
 stage "Pré-requis du NAS"
@@ -361,15 +381,13 @@ fi
 if [[ "$REUSE_CONFIG" == false ]]; then
   ask MAIL_USERNAME "Adresse de la boîte scientifique [Entrée = science-digest@bellegarde.co] :"
   MAIL_USERNAME=${MAIL_USERNAME:-science-digest@bellegarde.co}
-  ask DIGEST_RECIPIENT "Adresse qui recevra le futur digest :"
-  [[ "$MAIL_USERNAME" == *@* && "$DIGEST_RECIPIENT" == *@* ]] || {
-    warn "Les deux adresses doivent être valides."
+  ask DIGEST_RECIPIENT "Adresses qui recevront le futur digest (séparées par des virgules) :"
+  [[ "$MAIL_USERNAME" == *@* ]] || {
+    warn "L’adresse de la boîte scientifique est invalide."
     exit 1
   }
-  MAIL_USERNAME_NORMALIZED=$(printf '%s' "$MAIL_USERNAME" | tr '[:upper:]' '[:lower:]')
-  DIGEST_RECIPIENT_NORMALIZED=$(printf '%s' "$DIGEST_RECIPIENT" | tr '[:upper:]' '[:lower:]')
-  [[ "$MAIL_USERNAME_NORMALIZED" != "$DIGEST_RECIPIENT_NORMALIZED" ]] || {
-    warn "Le destinataire réel doit être différent de la boîte de test."
+  DIGEST_RECIPIENT=$(normalize_digest_recipients "$DIGEST_RECIPIENT" "$MAIL_USERNAME") || {
+    warn "Chaque destinataire doit être une adresse valide et distincte de la boîte de test."
     exit 1
   }
   ask_secret MAIL_PASSWORD "Mot de passe actuel de la boîte (saisie masquée) :"
@@ -416,6 +434,36 @@ if [[ "$REUSE_CONFIG" == false ]]; then
   write_env DIGEST_RECIPIENT "$DIGEST_RECIPIENT"
   chmod 600 "$ENV_FILE"
   unset MAIL_PASSWORD
+else
+  MAIL_USERNAME=$("$PYTHON_BIN" -c \
+    'import configparser, sys; c=configparser.ConfigParser(interpolation=None); c.read(sys.argv[1], encoding="utf-8"); print(c.get("imap", "username"))' \
+    "$CONFIG_PATH")
+  CURRENT_DIGEST_RECIPIENT=$("$PYTHON_BIN" -c \
+    'import configparser, sys; c=configparser.ConfigParser(interpolation=None); c.read(sys.argv[1], encoding="utf-8"); print(c.get("digest", "recipient"))' \
+    "$CONFIG_PATH")
+  say "Destinataires actuels : $CURRENT_DIGEST_RECIPIENT"
+  printf '  %sAdresses du digest, séparées par des virgules [Entrée = conserver] :%s ' "$BOLD" "$RESET"
+  read -r DIGEST_RECIPIENT || true
+  DIGEST_RECIPIENT=${DIGEST_RECIPIENT:-$CURRENT_DIGEST_RECIPIENT}
+  DIGEST_RECIPIENT=$(normalize_digest_recipients "$DIGEST_RECIPIENT" "$MAIL_USERNAME") || {
+    warn "Chaque destinataire doit être une adresse valide et distincte de la boîte de test."
+    exit 1
+  }
+  "$PYTHON_BIN" -c '
+import configparser
+import sys
+
+path, recipients = sys.argv[1:]
+config = configparser.ConfigParser(interpolation=None)
+config.read(path, encoding="utf-8")
+config["digest"]["recipient"] = recipients
+for section in ("feedback", "linkedin"):
+    if config.has_section(section):
+        config[section]["authorized_sender"] = recipients
+with open(path, "w", encoding="utf-8") as stream:
+    config.write(stream)
+' "$CONFIG_PATH" "$DIGEST_RECIPIENT"
+  say "Destinataires du digest et expéditeurs autorisés synchronisés."
 fi
 if ! grep -q '^\[backfill\]$' "$CONFIG_PATH"; then
   {
