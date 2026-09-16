@@ -16,6 +16,7 @@ from .mail_diagnostics import (
 from .citations import RIS_FILENAME, RIS_MEDIA_TYPE, render_ris
 from .feedback import feedback_mailto, load_feedback_settings
 from .linkedin_bridge import linkedin_request_mailto, load_linkedin_settings
+from .names import format_apa_in_text_citation
 from .models import PublicationPriority
 
 
@@ -96,6 +97,12 @@ def _plain_digest(
     lines = ["Veille quotidienne", ""]
     for publication in publications:
         lines.append(publication.title or publication.doi or "Publication sans titre")
+        citation = format_apa_in_text_citation(
+            publication.authors,
+            publication.published_date,
+        )
+        if citation:
+            lines.append(citation)
         if publication.summary_fr:
             lines.append(publication.summary_fr)
         if publication.bellegarde_value:

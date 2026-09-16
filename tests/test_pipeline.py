@@ -449,12 +449,8 @@ class PipelineTests(unittest.TestCase):
         self.assertNotIn("12 rue de la Science", digest)
         self.assertNotIn("lorsqu’elles sont disponibles", digest)
         self.assertNotIn("(s)", digest)
-        self.assertIn(
-            "Martin, A., Dupont, B., Durand, C., &amp; Leroy, D.", digest
-        )
-        authors_position = digest.index(
-            "Martin, A., Dupont, B., Durand, C., &amp; Leroy, D."
-        )
+        self.assertIn("(Martin et al., 2026)", digest)
+        authors_position = digest.index("(Martin et al., 2026)")
         doi_position = digest.index('class="doi ink-3"')
         summary_position = digest.index(
             "Les normes sociales influencent les choix durables.", doi_position

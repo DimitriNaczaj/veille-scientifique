@@ -2,7 +2,11 @@ import unittest
 import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 
-from veille.names import format_apa_author, format_apa_authors, format_ris_author
+from veille.names import (
+    format_apa_author,
+    format_apa_in_text_citation,
+    format_ris_author,
+)
 
 
 class ApaNameTests(unittest.TestCase):
@@ -48,26 +52,35 @@ class ApaNameTests(unittest.TestCase):
             "Askari Lasaki, B.",
         )
 
+    def test_formats_parenthetical_apa_in_text_citations(self):
+        self.assertEqual(
+            format_apa_in_text_citation(("Hossain, I.",), "2026-09-01"),
+            "(Hossain, 2026)",
+        )
+        self.assertEqual(
+            format_apa_in_text_citation(
+                ("Chebolu-Subramanian, V.", "Quinlan, Jennifer J."),
+                "2026",
+            ),
+            "(Chebolu-Subramanian & Quinlan, 2026)",
+        )
+        self.assertEqual(
+            format_apa_in_text_citation(
+                ("Guan, Y.", "Wang, Y.", "Li, R."),
+                "2026-10-01",
+            ),
+            "(Guan et al., 2026)",
+        )
+        self.assertEqual(
+            format_apa_in_text_citation(("Hossain, I.",), None),
+            "(Hossain, s. d.)",
+        )
+
     def test_keeps_collective_authors_as_literals(self):
         self.assertEqual(
             format_apa_author("Bellegarde Research Group"),
             "Bellegarde Research Group",
         )
-
-    def test_formats_an_apa_author_list(self):
-        self.assertEqual(
-            format_apa_authors(("Alice Martin", "Bob Dupont", "Claire Durand")),
-            "Martin, A., Dupont, B., & Durand, C.",
-        )
-
-    def test_abbreviates_an_apa_list_after_twenty_authors(self):
-        authors = tuple("Given{} Family{}".format(index, index) for index in range(1, 22))
-
-        formatted = format_apa_authors(authors)
-
-        self.assertIn("Family19, G.", formatted)
-        self.assertNotIn("Family20, G.", formatted)
-        self.assertTrue(formatted.endswith("… Family21, G."))
 
     def test_normalizes_ris_without_discarding_given_names(self):
         self.assertEqual(format_ris_author("Alice Martin"), "Martin, Alice")
@@ -83,6 +96,12 @@ class ApaNameTests(unittest.TestCase):
             root.findtext("csl:info/csl:id", namespaces=namespace),
             "http://www.zotero.org/styles/apa",
         )
+        citation = root.find("csl:citation", namespaces=namespace)
+        self.assertEqual(citation.attrib["et-al-min"], "3")
+        self.assertEqual(citation.attrib["et-al-use-first"], "1")
+        layout = citation.find("csl:layout", namespaces=namespace)
+        self.assertEqual(layout.attrib["prefix"], "(")
+        self.assertEqual(layout.attrib["suffix"], ")")
 
 
 if __name__ == "__main__":

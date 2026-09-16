@@ -123,18 +123,25 @@ def format_apa_author(author):
     return result
 
 
-def format_apa_authors(authors):
-    names = [format_apa_author(author) for author in authors or ()]
-    names = [name for name in names if name]
-    if len(names) > 20:
-        return ", ".join(names[:19]) + ", … " + names[-1]
-    if len(names) == 1:
-        return names[0]
-    if len(names) == 2:
-        return names[0] + ", & " + names[1]
-    if names:
-        return ", ".join(names[:-1]) + ", & " + names[-1]
-    return ""
+def format_apa_in_text_citation(authors, published_date):
+    """Render the parenthetical author-date form defined by styles/apa.csl."""
+    short_names = []
+    for author in authors or ():
+        family, _given, _suffix_value, literal = _split_author(author)
+        short_name = literal or family
+        if short_name:
+            short_names.append(short_name)
+    if not short_names:
+        return ""
+    if len(short_names) == 1:
+        author_text = short_names[0]
+    elif len(short_names) == 2:
+        author_text = short_names[0] + " & " + short_names[1]
+    else:
+        author_text = short_names[0] + " et al."
+    year_match = re.search(r"(?<!\d)(\d{4})(?!\d)", str(published_date or ""))
+    year = year_match.group(1) if year_match else "s. d."
+    return "({}, {})".format(author_text, year)
 
 
 def format_ris_author(author):

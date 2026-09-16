@@ -6,7 +6,7 @@ from .atomic import atomic_open
 from .feedback import feedback_mailto
 from .linkedin_bridge import linkedin_request_mailto
 from .models import PublicationPriority
-from .names import format_apa_authors
+from .names import format_apa_in_text_citation
 
 
 _MONTHS_FR = (
@@ -208,7 +208,10 @@ def _publication_html(
 
     authors = ""
     if publication.authors:
-        displayed_authors = format_apa_authors(publication.authors)
+        displayed_authors = format_apa_in_text_citation(
+            publication.authors,
+            publication.published_date,
+        )
         authors = """
             <p class="article-authors ink-2" style="margin:16px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#57555A;">{}</p>""".format(
             escape(displayed_authors)

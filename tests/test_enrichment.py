@@ -511,11 +511,7 @@ class EnrichmentPipelineTests(unittest.TestCase):
 
             self.assertEqual(report.publications_enriched, 1)
             digest = (root / "digest.html").read_text(encoding="utf-8")
-            self.assertIn(
-                "Pfister, L., Mannheimer, J., Hedkvist, I., Thorburn Stern, R., "
-                "&amp; Sarkadi, A.",
-                digest,
-            )
+            self.assertIn("(Pfister et al., 2026)", digest)
             self.assertNotIn("Rebecca Thorburn Stern", digest)
 
     def test_pipeline_keeps_sciencedirect_pii_when_publication_has_a_doi(self):
@@ -602,9 +598,7 @@ class EnrichmentPipelineTests(unittest.TestCase):
                 ["Behavioral choices in household energy use"],
             )
             digest = (root / "digest.html").read_text(encoding="utf-8")
-            self.assertIn(
-                "Martin, A., Leroy, B., Bernard, C., &amp; Robert, D.", digest
-            )
+            self.assertIn("(Martin et al., 2026)", digest)
 
     def test_retries_publisher_after_crossref_not_found_without_repeating_crossref(self):
         crossref_calls = []
@@ -865,7 +859,7 @@ class EnrichmentPipelineTests(unittest.TestCase):
             self.assertIn("Social norms and household energy conservation", html)
             self.assertIn("Journal of Behavioral Public Policy", html)
             self.assertIn("A randomized field experiment", html)
-            self.assertIn("Martin, A., &amp; Bernard, L.", html)
+            self.assertIn("(Martin &amp; Bernard, 2026)", html)
 
     def test_reuses_cached_metadata_after_digest_write_failure(self):
         with tempfile.TemporaryDirectory() as directory:
