@@ -22,7 +22,8 @@ test_recipient = science-digest@example.org
 # Plusieurs adresses peuvent être séparées par des virgules.
 recipient = consultant@example.org, collegue@example.org
 from_address = science-digest@example.org
-subject_prefix = Veille scientifique Bellegarde
+from_name = Bellegarde Science Digest
+subject_prefix = Veille scientifique
 # Désactivé par défaut pour limiter le poids du courriel. Le bouton Zotero
 # reste disponible article par article.
 attach_ris = false

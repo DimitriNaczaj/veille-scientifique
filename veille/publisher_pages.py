@@ -100,7 +100,13 @@ def _json_authors(article):
         if isinstance(author, str):
             name = author.strip()
         elif isinstance(author, dict):
-            name = str(author.get("name") or "").strip()
+            family = str(author.get("familyName") or "").strip()
+            given = str(author.get("givenName") or "").strip()
+            name = (
+                ", ".join(value for value in (family, given) if value)
+                if family
+                else str(author.get("name") or "").strip()
+            )
         else:
             name = ""
         if name:

@@ -38,6 +38,16 @@ class ApaNameTests(unittest.TestCase):
             "Amina García Márquez",
         )
 
+    def test_formats_a_structured_compound_family_name(self):
+        self.assertEqual(
+            format_apa_author("Martínez Sánchez, Graciela"),
+            "Martínez Sánchez, G.",
+        )
+        self.assertEqual(
+            format_apa_author("Askari Lasaki, Behnam"),
+            "Askari Lasaki, B.",
+        )
+
     def test_keeps_collective_authors_as_literals(self):
         self.assertEqual(
             format_apa_author("Bellegarde Research Group"),

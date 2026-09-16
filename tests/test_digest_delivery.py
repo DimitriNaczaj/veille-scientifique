@@ -62,7 +62,8 @@ security = starttls
 [digest]
 recipient = consultant@bellegarde.example
 from_address = science-digest@example.org
-subject_prefix = Veille comportementale Bellegarde
+from_name = Bellegarde Science Digest
+subject_prefix = Veille scientifique
 attach_ris = {}
 {}""".format(str(attach_ris).lower(), linkedin_section),
         encoding="utf-8",
@@ -111,9 +112,11 @@ class DigestDeliveryTests(unittest.TestCase):
             self.assertEqual(len(client.messages), 1)
             message = client.messages[0]
             self.assertEqual(message["To"], "consultant@bellegarde.example")
-            self.assertIn("Veille comportementale Bellegarde", message["Subject"])
-            self.assertIn("1 article", message["Subject"])
-            self.assertNotIn("(s)", message["Subject"])
+            self.assertEqual(
+                message["From"],
+                "Bellegarde Science Digest <science-digest@example.org>",
+            )
+            self.assertEqual(message["Subject"], "Veille scientifique — 1 article")
             self.assertTrue(message.is_multipart())
             self.assertIn(
                 "Social norms and household energy conservation",

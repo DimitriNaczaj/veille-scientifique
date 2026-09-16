@@ -59,7 +59,24 @@ def _authors(payload):
     for author in authors or []:
         if not isinstance(author, dict):
             continue
-        name = author.get("ce:indexed-name") or author.get("indexed-name")
+        family = author.get("ce:surname") or author.get("surname")
+        given = (
+            author.get("ce:given-name")
+            or author.get("given-name")
+            or author.get("ce:initials")
+            or author.get("initials")
+        )
+        if family:
+            name = ", ".join(
+                value
+                for value in (
+                    " ".join(str(family).split()),
+                    " ".join(str(given).split()) if given else "",
+                )
+                if value
+            )
+        else:
+            name = author.get("ce:indexed-name") or author.get("indexed-name")
         if name:
             names.append(" ".join(str(name).split()))
     return tuple(names)

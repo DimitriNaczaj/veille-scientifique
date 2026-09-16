@@ -97,6 +97,25 @@ class OpenAlexClientTests(unittest.TestCase):
 
 
 class EuropePmcClientTests(unittest.TestCase):
+    def test_preserves_structured_family_and_given_names(self):
+        payload = json.loads(json.dumps(EUROPEPMC_PAYLOAD))
+        payload["resultList"]["result"][0]["authorList"] = {
+            "author": [
+                {
+                    "fullName": "Graciela Martínez Sánchez",
+                    "firstName": "Graciela",
+                    "lastName": "Martínez Sánchez",
+                }
+            ]
+        }
+        client = EuropePmcClient(
+            opener=lambda request, timeout=None: _Response(payload)
+        )
+
+        metadata = client.fetch_by_doi("10.1016/j.jenvman.2026.130563")
+
+        self.assertEqual(metadata.authors, ("Martínez Sánchez, Graciela",))
+
     def test_abstract_is_returned(self):
         client = EuropePmcClient(
             opener=lambda r, timeout=None: _Response(EUROPEPMC_PAYLOAD)

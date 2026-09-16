@@ -413,6 +413,26 @@ class CrossrefClientTests(unittest.TestCase):
                 (root / "digest.html").read_text(encoding="utf-8"),
             )
 
+    def test_publisher_json_ld_preserves_structured_compound_family_name(self):
+        html = """<html><head><script type="application/ld+json">
+        {
+          "@type": "ScholarlyArticle",
+          "headline": "Article",
+          "author": [{
+            "@type": "Person",
+            "givenName": "Behnam",
+            "familyName": "Askari Lasaki"
+          }]
+        }
+        </script></head></html>"""
+        client = PublisherPageClient(
+            opener=lambda request, timeout, context=None: StubHTMLResponse(html)
+        )
+
+        metadata = client.fetch_by_url("https://publisher.example.org/article")
+
+        self.assertEqual(metadata.authors, ("Askari Lasaki, Behnam",))
+
 
 class EnrichmentPipelineTests(unittest.TestCase):
     def test_sciencedirect_title_completes_the_full_author_list_from_crossref(self):

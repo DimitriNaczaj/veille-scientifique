@@ -69,6 +69,26 @@ class _Opener:
 
 
 class ElsevierViewFallbackTests(unittest.TestCase):
+    def test_preserves_structured_compound_family_names(self):
+        payload = json.loads(json.dumps(META_PAYLOAD))
+        payload["abstracts-retrieval-response"]["coredata"]["dc:creator"] = {
+            "author": [
+                {
+                    "ce:indexed-name": "Graciela Martínez Sánchez",
+                    "ce:surname": "Martínez Sánchez",
+                    "ce:given-name": "Graciela",
+                }
+            ]
+        }
+        client = ElsevierClient(
+            "clé",
+            opener=lambda request, timeout=None: _Response(payload),
+        )
+
+        metadata = client.fetch_by_pii("S2352550926001041")
+
+        self.assertEqual(metadata.authors, ("Martínez Sánchez, Graciela",))
+
     def test_entitled_key_keeps_meta_abs_and_returns_abstract(self):
         opener = _Opener(allowed_views=("META_ABS", "META"))
         client = ElsevierClient("clé", opener=opener)

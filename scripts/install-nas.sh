@@ -405,7 +405,8 @@ if [[ "$REUSE_CONFIG" == false ]]; then
     printf 'from_address = %s\ntest_recipient = %s\n\n' "$MAIL_USERNAME" "$MAIL_USERNAME"
     printf '%s\n' '[digest]'
     printf 'recipient = %s\nfrom_address = %s\n' "$DIGEST_RECIPIENT" "$MAIL_USERNAME"
-    printf '%s\n\n' 'subject_prefix = Veille scientifique Bellegarde' 'attach_ris = false'
+    printf '%s\n' 'from_name = Bellegarde Science Digest' 'subject_prefix = Veille scientifique'
+    printf '%s\n\n' 'attach_ris = false'
     printf '%s\n' '[app]'
     printf 'inbox = %s/inbox\ndatabase = %s/data/veille.sqlite\noutput = %s/out/digest.html\n' \
       "$INSTALL_ROOT" "$INSTALL_ROOT" "$INSTALL_ROOT"
@@ -457,6 +458,8 @@ path, recipients = sys.argv[1:]
 config = configparser.ConfigParser(interpolation=None)
 config.read(path, encoding="utf-8")
 config["digest"]["recipient"] = recipients
+config["digest"]["from_name"] = "Bellegarde Science Digest"
+config["digest"]["subject_prefix"] = "Veille scientifique"
 for section in ("feedback", "linkedin"):
     if config.has_section(section):
         config[section]["authorized_sender"] = recipients

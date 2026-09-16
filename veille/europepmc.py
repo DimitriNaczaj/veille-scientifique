@@ -26,11 +26,22 @@ def _authors(result):
     for author in authors or []:
         if not isinstance(author, dict):
             continue
-        name = author.get("fullName") or author.get("collectiveName")
-        if not name:
-            initials = author.get("initials") or ""
-            surname = author.get("lastName") or ""
-            name = "{} {}".format(surname, initials).strip()
+        collective = author.get("collectiveName")
+        surname = author.get("lastName")
+        given = author.get("firstName") or author.get("initials")
+        if collective:
+            name = collective
+        elif surname:
+            name = ", ".join(
+                value
+                for value in (
+                    str(surname).strip(),
+                    str(given or "").strip(),
+                )
+                if value
+            )
+        else:
+            name = author.get("fullName")
         if name:
             names.append(" ".join(str(name).split()))
     return tuple(names)

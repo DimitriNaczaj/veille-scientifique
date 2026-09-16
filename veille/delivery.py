@@ -1,7 +1,7 @@
 import smtplib
 from dataclasses import dataclass
-from datetime import date
 from email.message import EmailMessage
+from email.utils import formataddr
 from pathlib import Path
 from urllib.parse import quote
 
@@ -30,6 +30,7 @@ _RELATED_IMAGES = (
 class DigestDeliverySettings:
     recipient: str
     from_address: str
+    from_name: str
     subject_prefix: str
     attach_ris: bool
 
@@ -61,13 +62,21 @@ def load_digest_delivery_settings(path):
             config.get("digest", "from_address", fallback=smtp.from_address).strip()
             or smtp.from_address
         ),
+        from_name=(
+            config.get(
+                "digest",
+                "from_name",
+                fallback="Bellegarde Science Digest",
+            ).strip()
+            or "Bellegarde Science Digest"
+        ),
         subject_prefix=(
             config.get(
                 "digest",
                 "subject_prefix",
-                fallback="Veille scientifique Bellegarde",
+                fallback="Veille scientifique",
             ).strip()
-            or "Veille scientifique Bellegarde"
+            or "Veille scientifique"
         ),
         attach_ris=attach_ris,
     )
@@ -168,16 +177,15 @@ class SMTPDigestSender:
         linkedin_settings = load_linkedin_settings(self.config_path)
         html = Path(digest_path).read_text(encoding="utf-8")
         message = EmailMessage()
-        message["From"] = digest.from_address
+        message["From"] = formataddr((digest.from_name, digest.from_address))
         message["To"] = digest.recipient
         article_count = (
             "1 article"
             if len(publications) == 1
             else "{} articles".format(len(publications))
         )
-        message["Subject"] = "{} — {} — {}".format(
+        message["Subject"] = "{} — {}".format(
             self.subject_prefix or digest.subject_prefix,
-            date.today().isoformat(),
             article_count,
         )
         message.set_content(
