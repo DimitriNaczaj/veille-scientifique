@@ -117,6 +117,7 @@ def run_daily(
     no_ai=False,
     no_send=False,
     no_feedback=False,
+    no_linkedin=False,
     imap_factory=None,
     smtp_factory=None,
     http_opener=None,
@@ -157,7 +158,7 @@ def run_daily(
 
     warnings = []
     feedback_settings = None if no_feedback else load_feedback_settings(config_path)
-    linkedin_settings = load_linkedin_settings(config_path)
+    linkedin_settings = None if no_linkedin else load_linkedin_settings(config_path)
     analysis_provider = None
     ai_enabled = not no_ai
     if config.has_section("ai"):

@@ -238,6 +238,11 @@ def build_parser():
         help="Désactiver la synchronisation des validations",
     )
     daily.add_argument(
+        "--no-linkedin",
+        action="store_true",
+        help="Désactiver la synchronisation des demandes LinkedIn",
+    )
+    daily.add_argument(
         "--format",
         dest="report_format",
         choices=("json", "human"),
@@ -370,6 +375,7 @@ def main(
                 no_ai=args.no_ai,
                 no_send=args.no_send,
                 no_feedback=args.no_feedback,
+                no_linkedin=args.no_linkedin,
                 imap_factory=imap_factory,
                 smtp_factory=smtp_factory,
                 http_opener=http_opener,

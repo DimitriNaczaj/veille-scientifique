@@ -64,6 +64,19 @@ class PrivateInstallerTests(unittest.TestCase):
         )
         self.assertIn("LINKEDIN_PREPARATION_ROOT", script)
 
+    def test_installer_disables_linkedin_during_the_isolated_smoke_test(self):
+        script = (ROOT / "scripts" / "install-nas.sh").read_text(
+            encoding="utf-8"
+        )
+        smoke_stage = script.split('stage "Recette quotidienne isolée"', 1)[1]
+        smoke_command = smoke_stage.split(
+            'stage "Courriel de contrôle et prochaine étape"', 1
+        )[0]
+
+        self.assertIn("--no-feedback", smoke_command)
+        self.assertIn("--no-linkedin", smoke_command)
+        self.assertIn("--no-send", smoke_command)
+
     def test_readme_bootstrap_hides_and_clears_the_private_token(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
 

@@ -623,6 +623,7 @@ mkdir -p "$SMOKE_ROOT/inbox" "$SMOKE_ROOT/out"
     --ai-limit 0 \
     --no-ai \
     --no-feedback \
+    --no-linkedin \
     --no-send
 )
 [[ -f "$SMOKE_ROOT/out/digest.html" ]] || {

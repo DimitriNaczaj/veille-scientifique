@@ -780,6 +780,10 @@ class Store:
     ):
         if status not in ("rejected", "ignored"):
             raise ValueError("Statut de demande LinkedIn invalide.")
+        if publication_identity is not None and not self.has_publication(
+            publication_identity
+        ):
+            publication_identity = None
         with self.connection:
             self.connection.execute(
                 "INSERT OR IGNORE INTO linkedin_request_messages("

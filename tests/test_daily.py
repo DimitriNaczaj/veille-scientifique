@@ -360,6 +360,81 @@ output = {output}
             self.assertEqual(FakeSyncIMAP.instances[0].selection, ("INBOX", True))
             self.assertEqual(FakeSyncIMAP.instances[1].selection, ("Articles", True))
 
+    def test_no_linkedin_isolates_a_smoke_database_from_real_requests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            linkedin_inbox = root / "linkedin-inbox"
+            linkedin_inbox.mkdir()
+            request = EmailMessage()
+            request["Message-ID"] = "<linkedin-smoke@example.org>"
+            request["From"] = "consultant@bellegarde.example"
+            request["To"] = "science-digest@example.org"
+            request["Subject"] = "[Veille vers LinkedIn] Article absent"
+            request.set_content(
+                "VEILLE-LINKEDIN/1\n"
+                "token={}\n".format(
+                    create_linkedin_request_token(
+                        "doi:10.1234/absent-from-smoke", "linkedin-secret"
+                    )
+                )
+            )
+            (linkedin_inbox / "request.eml").write_bytes(request.as_bytes())
+            config = root / "veille.ini"
+            config.write_text(
+                """[imap]
+host = mail.example.org
+username = science-digest@example.org
+password = super-secret-password
+folder = Articles
+initial_mode = latest
+
+[digest]
+recipient = consultant@bellegarde.example
+
+[linkedin]
+enabled = true
+recipient = science-digest@example.org
+authorized_sender = consultant@bellegarde.example
+folder = INBOX
+inbox = {linkedin_inbox}
+output = {linkedin_output}
+token_secret = linkedin-secret
+download_pdf = false
+
+[app]
+inbox = {article_inbox}
+database = {database}
+output = {output}
+""".format(
+                    linkedin_inbox=linkedin_inbox,
+                    linkedin_output=root / "linkedin-output",
+                    article_inbox=root / "article-inbox",
+                    database=root / "smoke.sqlite",
+                    output=root / "digest.html",
+                ),
+                encoding="utf-8",
+            )
+            (root / "article-inbox").mkdir()
+            stdout = io.StringIO()
+
+            with redirect_stdout(stdout):
+                exit_code = main(
+                    [
+                        "daily",
+                        "--config",
+                        str(config),
+                        "--no-ai",
+                        "--no-send",
+                        "--no-feedback",
+                        "--no-linkedin",
+                    ],
+                    imap_factory=EmptyIMAP,
+                )
+
+            self.assertEqual(exit_code, 0)
+            report = json.loads(stdout.getvalue())
+            self.assertFalse(report["linkedin"]["enabled"])
+
     def test_daily_imports_linkedin_request_from_shared_feedback_inbox(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

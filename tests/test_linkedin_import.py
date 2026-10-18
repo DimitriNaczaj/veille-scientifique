@@ -270,6 +270,43 @@ class LinkedinImportTests(unittest.TestCase):
             self.assertEqual(report.accepted, 1)
             self.assertEqual(report.rejected, 1)
 
+    def test_rejects_an_unknown_publication_without_breaking_foreign_keys(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inbox = root / "feedback-inbox"
+            output = root / "01 - À PRÉPARER"
+            inbox.mkdir()
+            database = root / "veille.sqlite"
+            store = Store(database)
+            store.close()
+            request_email(inbox / "request.eml")
+
+            report = run_linkedin_import(
+                inbox,
+                database,
+                output,
+                authorized_sender="consultant@example.org",
+                token_secret=SECRET,
+            )
+
+            self.assertEqual(report.accepted, 0)
+            self.assertEqual(report.rejected, 1)
+            store = Store(database)
+            try:
+                row = store.connection.execute(
+                    "SELECT status, publication_identity, reason "
+                    "FROM linkedin_request_messages"
+                ).fetchone()
+                self.assertEqual(row[0], "rejected")
+                self.assertIsNone(row[1])
+                self.assertIn("Publication inconnue", row[2])
+                self.assertEqual(
+                    store.connection.execute("PRAGMA foreign_key_check").fetchall(),
+                    [],
+                )
+            finally:
+                store.close()
+
 
 if __name__ == "__main__":
     unittest.main()
