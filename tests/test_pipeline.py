@@ -478,7 +478,7 @@ class PipelineTests(unittest.TestCase):
                 instant = datetime(2026, 8, 23, 12, 5, tzinfo=timezone.utc)
                 return instant.astimezone(tz) if tz else instant
 
-        with patch("veille.digest.datetime", FixedUtcDateTime):
+        with patch("veille.clock.datetime", FixedUtcDateTime):
             paris_digest = render_digest((publication,))
         self.assertIn("Généré le 23 août 2026 à 14:05.", paris_digest)
 

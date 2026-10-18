@@ -198,6 +198,7 @@ def run_daily(
         delivery_handler = SMTPDigestSender(
             config_path,
             smtp_factory=smtp_factory,
+            defer_weekends=True,
         )
 
     feedback_sync_report = None

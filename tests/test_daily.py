@@ -4,8 +4,10 @@ import mailbox
 import tempfile
 import unittest
 from contextlib import redirect_stdout
+from datetime import datetime
 from email.message import EmailMessage
 from pathlib import Path
+from unittest.mock import patch
 
 from tests.test_digest_delivery import FakeSMTP
 from tests.test_imap_sync import FakeSyncIMAP
@@ -57,6 +59,12 @@ class DailyCommandTests(unittest.TestCase):
     def setUp(self):
         FakeSyncIMAP.instances = []
         FakeSMTP.instances = []
+        clock = patch(
+            "veille.delivery.paris_now",
+            return_value=datetime(2026, 10, 12, 8, 30),
+        )
+        clock.start()
+        self.addCleanup(clock.stop)
 
     def test_runs_sync_enrichment_digest_and_delivery_in_one_command(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -117,6 +125,81 @@ ai_limit = 5
                 report["recipient"], "consultant@bellegarde.example"
             )
             self.assertTrue((root / "out" / "digest.html").is_file())
+            self.assertEqual(len(FakeSMTP.instances[0].messages), 1)
+
+    def test_weekend_digest_is_deferred_and_sent_on_monday(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "veille.ini"
+            config.write_text(
+                """[imap]
+host = mail.example.org
+port = 993
+username = science-digest@example.org
+password = super-secret-password
+folder = Articles
+initial_mode = all
+
+[smtp]
+host = smtp.example.org
+port = 587
+security = starttls
+
+[digest]
+recipient = consultant@bellegarde.example
+
+[app]
+inbox = {inbox}
+database = {database}
+output = {output}
+sync_limit = 10
+enrichment_limit = 10
+ai_limit = 5
+""".format(
+                    inbox=root / "inbox",
+                    database=root / "data" / "veille.sqlite",
+                    output=root / "out" / "digest.html",
+                ),
+                encoding="utf-8",
+            )
+
+            def open_request(request, timeout, context=None):
+                return StubResponse()
+
+            saturday_output = io.StringIO()
+            with patch(
+                "veille.delivery.paris_now",
+                return_value=datetime(2026, 10, 17, 8, 30),
+            ), redirect_stdout(saturday_output):
+                saturday_exit_code = main(
+                    ["daily", "--config", str(config), "--no-ai"],
+                    imap_factory=FakeSyncIMAP,
+                    smtp_factory=FakeSMTP,
+                    http_opener=open_request,
+                )
+
+            saturday = json.loads(saturday_output.getvalue())
+            self.assertEqual(saturday_exit_code, 0)
+            self.assertFalse(saturday["email_sent"])
+            self.assertEqual(saturday["pipeline"]["publications_relevant"], 1)
+            self.assertEqual(saturday["pipeline"]["publications_pending"], 1)
+            self.assertEqual(FakeSMTP.instances, [])
+
+            monday_output = io.StringIO()
+            with redirect_stdout(monday_output):
+                monday_exit_code = main(
+                    ["daily", "--config", str(config), "--no-ai"],
+                    imap_factory=FakeSyncIMAP,
+                    smtp_factory=FakeSMTP,
+                    http_opener=open_request,
+                )
+
+            monday = json.loads(monday_output.getvalue())
+            self.assertEqual(monday_exit_code, 0)
+            self.assertTrue(monday["email_sent"])
+            self.assertEqual(monday["pipeline"]["publications_relevant"], 1)
+            self.assertEqual(monday["pipeline"]["publications_pending"], 0)
+            self.assertEqual(len(FakeSMTP.instances), 1)
             self.assertEqual(len(FakeSMTP.instances[0].messages), 1)
 
     def test_daily_never_delivers_the_historical_mbox_catalog(self):

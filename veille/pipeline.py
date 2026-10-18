@@ -226,9 +226,19 @@ def run_pipeline(
             feedback_settings=feedback_settings,
             linkedin_settings=linkedin_settings,
         )
+        delivery_result = None
         if delivery_handler is not None:
-            delivery_handler.send(output, selected_publications)
-        if selected_publications:
+            delivery_result = delivery_handler.send(output, selected_publications)
+        delivery_deferred = bool(
+            delivery_result is not None
+            and getattr(delivery_result, "deferred", False)
+        )
+        if delivery_deferred:
+            warnings.append(
+                getattr(delivery_result, "reason", "")
+                or "Digest reporté."
+            )
+        if selected_publications and not delivery_deferred:
             store.record_digest_run(
                 "quotidien",
                 selected_publications,
@@ -237,7 +247,18 @@ def run_pipeline(
                 sent=bool(getattr(delivery_handler, "sent", False)),
                 total_count=len(handled_publications),
             )
-        store.mark_delivered(handled_publications)
+        if delivery_deferred:
+            selected_identities = {
+                publication.identity for publication in selected_publications
+            }
+            delivered_publications = tuple(
+                publication
+                for publication in handled_publications
+                if publication.identity not in selected_identities
+            )
+        else:
+            delivered_publications = handled_publications
+        store.mark_delivered(delivered_publications)
         publications_pending = store.pending_count()
     finally:
         store.close()
@@ -247,7 +268,7 @@ def run_pipeline(
         messages_skipped=messages_skipped,
         publications_detected=publications_detected,
         publications_new=publications_new,
-        publications_delivered=len(handled_publications),
+        publications_delivered=len(delivered_publications),
         publications_enriched=publications_enriched,
         publications_ai_analyzed=publications_ai_analyzed,
         publications_relevant=len(selected_publications),

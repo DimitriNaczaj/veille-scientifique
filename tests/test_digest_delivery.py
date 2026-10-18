@@ -1,6 +1,8 @@
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 from veille.citations import RIS_FILENAME
 from veille.delivery import SMTPDigestSender, load_digest_delivery_settings
@@ -242,6 +244,40 @@ class DigestDeliveryTests(unittest.TestCase):
 
             self.assertFalse(sender.sent)
             self.assertEqual(FakeSMTP.instances, [])
+
+    def test_defers_digest_on_saturday_and_sunday(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "veille.ini"
+            digest = root / "digest.html"
+            digest.write_text("<html></html>", encoding="utf-8")
+            write_config(config)
+            publication = NewPublication(
+                identity="doi:10.1234/weekend",
+                doi="10.1234/weekend",
+                title="Article du week-end",
+                url=None,
+                source_subject="Newsletter",
+                source_sender="publisher@example.org",
+            )
+
+            for day in (17, 18):
+                with self.subTest(day=day), patch(
+                    "veille.delivery.paris_now",
+                    return_value=datetime(2026, 10, day, 8, 30),
+                ):
+                    FakeSMTP.instances = []
+                    sender = SMTPDigestSender(
+                        config,
+                        smtp_factory=FakeSMTP,
+                        defer_weekends=True,
+                    )
+                    result = sender.send(digest, (publication,))
+
+                    self.assertFalse(sender.sent)
+                    self.assertTrue(result.deferred)
+                    self.assertIn("lundi", result.reason)
+                    self.assertEqual(FakeSMTP.instances, [])
 
     def test_refuses_real_recipient_equal_to_smtp_test_recipient(self):
         with tempfile.TemporaryDirectory() as directory:

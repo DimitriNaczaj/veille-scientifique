@@ -14,6 +14,7 @@ from .mail_diagnostics import (
     parse_email_addresses,
 )
 from .citations import RIS_FILENAME, RIS_MEDIA_TYPE, render_ris
+from .clock import paris_now
 from .feedback import feedback_mailto, load_feedback_settings
 from .linkedin_bridge import linkedin_request_mailto, load_linkedin_settings
 from .names import format_apa_in_text_citation
@@ -34,6 +35,13 @@ class DigestDeliverySettings:
     from_name: str
     subject_prefix: str
     attach_ris: bool
+
+
+@dataclass(frozen=True)
+class DeliveryResult:
+    sent: bool
+    deferred: bool = False
+    reason: str = ""
 
 
 def load_digest_delivery_settings(path):
@@ -166,18 +174,34 @@ def _add_related_images(message, html):
 
 
 class SMTPDigestSender:
-    def __init__(self, config_path, smtp_factory=None, subject_prefix=None):
+    def __init__(
+        self,
+        config_path,
+        smtp_factory=None,
+        subject_prefix=None,
+        defer_weekends=False,
+    ):
         self.config_path = config_path
         self.smtp_factory = smtp_factory or smtplib.SMTP
         self.subject_prefix = subject_prefix
+        self.defer_weekends = defer_weekends
         self.sent = False
         self.recipient = None
 
     def send(self, digest_path, publications):
         publications = tuple(publications)
+        self.sent = False
         if not publications:
-            self.sent = False
-            return
+            return DeliveryResult(sent=False)
+        if self.defer_weekends and paris_now().weekday() >= 5:
+            return DeliveryResult(
+                sent=False,
+                deferred=True,
+                reason=(
+                    "Digest non envoyé le week-end ; "
+                    "articles conservés pour le lundi."
+                ),
+            )
         smtp = load_smtp_settings(self.config_path)
         digest = load_digest_delivery_settings(self.config_path)
         feedback_settings = load_feedback_settings(self.config_path)
@@ -226,6 +250,7 @@ class SMTPDigestSender:
             client.send_message(message)
             self.sent = True
             self.recipient = digest.recipient
+            return DeliveryResult(sent=True)
         except Exception as error:
             raise MailDiagnosticError(_safe_error(error, smtp.password)) from None
         finally:
