@@ -26,6 +26,7 @@ def analysis_result(
     flags=None,
     summary="Les normes sociales réduisent la consommation d’énergie.",
     applications=None,
+    classification_reason="Preuve robuste et directement utile.",
 ):
     method_flags = {
         "opinion_editorial_or_nonempirical": False,
@@ -35,6 +36,7 @@ def analysis_result(
         "single_context_descriptive": False,
         "isolated_lab_experiment": False,
         "systematic_review_without_effect_sizes": False,
+        "descriptive_without_transferable_lever": False,
     }
     method_flags.update(flags or {})
     return {
@@ -49,7 +51,7 @@ def analysis_result(
         },
         "method_flags": method_flags,
         "evidence_quality": evidence_quality,
-        "classification_reason": "Preuve robuste et directement utile.",
+        "classification_reason": classification_reason,
         "summary_fr": summary,
         "bellegarde_value": "Une intervention testée avec un protocole robuste.",
         "applications": applications
@@ -107,7 +109,7 @@ class OpenAIAnalyzerTests(unittest.TestCase):
         self.assertEqual(analysis.input_tokens, 321)
         self.assertEqual(analysis.output_tokens, 87)
         self.assertEqual(analysis.model, "gpt-test")
-        self.assertEqual(analysis.prompt_version, "bellegarde-v5.1")
+        self.assertEqual(analysis.prompt_version, "bellegarde-v5.2")
         self.assertEqual(analysis.raw_interest_score, 88)
         self.assertEqual(analysis.interest_score, 88)
         self.assertEqual(analysis.mission_fit_score, 25)
@@ -115,7 +117,7 @@ class OpenAIAnalyzerTests(unittest.TestCase):
         self.assertEqual(analysis.actionability_score, 20)
         self.assertEqual(analysis.generalizability_score, 12)
         self.assertEqual(analysis.novelty_score, 6)
-        self.assertEqual(analysis.classification_rules, ())
+        self.assertIn("core_mission_high", analysis.classification_rules)
         self.assertEqual(analysis.evidence_quality, "strong")
         request, timeout, context = requests[0]
         payload = json.loads(request.data.decode("utf-8"))
@@ -141,6 +143,20 @@ class OpenAIAnalyzerTests(unittest.TestCase):
         self.assertIn("Le code calcule", payload["instructions"])
         self.assertIn(
             "stress, l’anxiété, la dépression", payload["instructions"]
+        )
+        self.assertIn(
+            "mécanisme ou levier comportemental transférable",
+            payload["instructions"],
+        )
+        self.assertIn(
+            "une simple section d’implications",
+            payload["instructions"].lower(),
+        )
+        self.assertIn(
+            "descriptive_without_transferable_lever",
+            payload["text"]["format"]["schema"]["properties"]["method_flags"][
+                "properties"
+            ],
         )
         self.assertNotIn("api-secret", request.data.decode("utf-8"))
 
@@ -224,7 +240,6 @@ class OpenAIAnalyzerTests(unittest.TestCase):
                 79,
                 "systematic_review_without_effect_sizes",
             ),
-            ({}, "moderate", 79, "high_requires_strong_evidence"),
         )
         for flags, quality, expected_score, expected_rule in cases:
             with self.subTest(rule=expected_rule):
@@ -235,17 +250,47 @@ class OpenAIAnalyzerTests(unittest.TestCase):
                 self.assertEqual(score, expected_score)
                 self.assertIn(expected_rule, rules)
 
-    def test_applies_every_mandatory_high_subscore(self):
+    def test_core_mission_can_be_high_with_moderate_evidence(self):
+        result = analysis_result(
+            scores={
+                "mission_fit": 25,
+                "scientific_robustness": 15,
+                "actionability": 15,
+                "generalizability": 3,
+                "novelty": 4,
+            },
+            evidence_quality="moderate",
+        )
+
+        priority, score, raw_score, rules = OpenAIAnalyzer._classify(result)
+
+        self.assertIs(priority, PublicationPriority.HIGH)
+        self.assertEqual((score, raw_score), (62, 62))
+        self.assertIn("core_mission_high", rules)
+
+    def test_core_high_requires_fit_robustness_actionability_and_evidence(self):
         cases = (
             (
                 {
-                    "mission_fit": 25,
-                    "scientific_robustness": 15,
+                    "mission_fit": 20,
+                    "scientific_robustness": 25,
                     "actionability": 25,
                     "generalizability": 15,
                     "novelty": 10,
                 },
-                "high_requires_robustness_20",
+                "strong",
+                "high_requires_mission_fit_25",
+            ),
+            (
+                {
+                    "mission_fit": 25,
+                    "scientific_robustness": 10,
+                    "actionability": 25,
+                    "generalizability": 15,
+                    "novelty": 10,
+                },
+                "strong",
+                "high_requires_robustness_15",
             ),
             (
                 {
@@ -255,6 +300,7 @@ class OpenAIAnalyzerTests(unittest.TestCase):
                     "generalizability": 15,
                     "novelty": 10,
                 },
+                "strong",
                 "high_requires_actionability_15",
             ),
             (
@@ -262,16 +308,17 @@ class OpenAIAnalyzerTests(unittest.TestCase):
                     "mission_fit": 25,
                     "scientific_robustness": 25,
                     "actionability": 25,
-                    "generalizability": 6,
+                    "generalizability": 15,
                     "novelty": 10,
                 },
-                "high_requires_generalizability_9",
+                "weak",
+                "high_requires_moderate_evidence",
             ),
         )
-        for scores, expected_rule in cases:
+        for scores, quality, expected_rule in cases:
             with self.subTest(rule=expected_rule):
                 priority, score, raw_score, rules = OpenAIAnalyzer._classify(
-                    analysis_result(scores=scores)
+                    analysis_result(scores=scores, evidence_quality=quality)
                 )
                 self.assertGreaterEqual(raw_score, 80)
                 self.assertIs(priority, PublicationPriority.WATCH)
@@ -284,6 +331,7 @@ class OpenAIAnalyzerTests(unittest.TestCase):
             "clinical_outcomes_without_behavior",
             "sample_below_25_per_condition",
             "non_systematic_review",
+            "descriptive_without_transferable_lever",
         ):
             with self.subTest(flag=flag):
                 result = analysis_result(flags={flag: True})
@@ -292,6 +340,46 @@ class OpenAIAnalyzerTests(unittest.TestCase):
                 self.assertEqual(raw_score, 88)
                 self.assertEqual(score, 54)
                 self.assertIn(flag, rules)
+
+    def test_cleans_a_stray_non_latin_suffix_from_the_reason(self):
+        result = analysis_result(
+            classification_reason=(
+                "L’étude teste un levier réutilisable. "
+                "La seconde phrase se termine avec un parasite何"
+            )
+        )
+        analyzer = OpenAIAnalyzer(
+            api_key="api-secret",
+            opener=lambda request, timeout=None, context=None: StubResponse(
+                {
+                    "output": [
+                        {
+                            "type": "message",
+                            "content": [
+                                {"type": "output_text", "text": json.dumps(result)}
+                            ],
+                        }
+                    ],
+                    "usage": {"input_tokens": 100, "output_tokens": 50},
+                }
+            ),
+        )
+        publication = NewPublication(
+            identity="doi:10.1234/clean-text",
+            doi="10.1234/clean-text",
+            title="A reusable behavioral intervention",
+            url="https://doi.org/10.1234/clean-text",
+            source_subject="Newsletter",
+            source_sender="éditeur@example.org",
+            abstract="A field experiment evaluates a reusable intervention.",
+        )
+
+        analysis = analyzer.analyze(publication)
+
+        self.assertEqual(
+            analysis.classification_reason,
+            "L’étude teste un levier réutilisable.",
+        )
 
     def test_excludes_robust_clinical_outcomes_without_behavior(self):
         result = analysis_result(

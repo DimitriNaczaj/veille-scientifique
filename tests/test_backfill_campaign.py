@@ -46,6 +46,7 @@ def v5_result(scores, quality, reason, summary, value, applications, themes):
             "single_context_descriptive": False,
             "isolated_lab_experiment": False,
             "systematic_review_without_effect_sizes": False,
+            "descriptive_without_transferable_lever": False,
         },
         "evidence_quality": quality,
         "classification_reason": reason,
@@ -332,7 +333,9 @@ class BackfillCampaignTests(unittest.TestCase):
                 self.assertEqual(assessment.actionability_score, 25)
                 self.assertEqual(assessment.generalizability_score, 15)
                 self.assertEqual(assessment.novelty_score, 4)
-                self.assertEqual(assessment.classification_rules, ())
+                self.assertEqual(
+                    assessment.classification_rules, ("core_mission_high",)
+                )
             finally:
                 store.close()
             with fixture.export.open(encoding="utf-8", newline="") as stream:
@@ -346,7 +349,7 @@ class BackfillCampaignTests(unittest.TestCase):
             self.assertEqual(rows[0]["actionability_score"], "25")
             self.assertEqual(rows[0]["generalizability_score"], "15")
             self.assertEqual(rows[0]["novelty_score"], "4")
-            self.assertEqual(rows[0]["classification_rules"], "")
+            self.assertEqual(rows[0]["classification_rules"], "core_mission_high")
             self.assertTrue(rows[0]["authors"].startswith("'="))
             self.assertEqual(rows[1]["status"], "pending")
             self.assertEqual(rows[2]["status"], "withheld_without_abstract")

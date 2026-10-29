@@ -49,6 +49,7 @@ def v5_result(scores, quality, reason, summary, value="", applications=None, the
             "single_context_descriptive": False,
             "isolated_lab_experiment": False,
             "systematic_review_without_effect_sizes": False,
+            "descriptive_without_transferable_lever": False,
         },
         "evidence_quality": quality,
         "classification_reason": reason,
