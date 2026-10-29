@@ -378,7 +378,21 @@ class OpenAIAnalyzerTests(unittest.TestCase):
 
         self.assertEqual(
             analysis.classification_reason,
-            "L’étude teste un levier réutilisable.",
+            "L’étude teste un levier réutilisable. "
+            "La seconde phrase se termine avec un parasite",
+        )
+
+    def test_preserves_a_legitimate_multilingual_term(self):
+        text = "Étude conduite au Japon. Le mécanisme est nommé 東京."
+
+        self.assertEqual(OpenAIAnalyzer._clean_generated_text(text), text)
+
+    def test_removes_zero_width_characters_without_discarding_text(self):
+        text = "L’étude teste un levier. La justification est interrompue-\u200b\u200b"
+
+        self.assertEqual(
+            OpenAIAnalyzer._clean_generated_text(text),
+            "L’étude teste un levier. La justification est interrompue-",
         )
 
     def test_excludes_robust_clinical_outcomes_without_behavior(self):

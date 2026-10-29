@@ -109,7 +109,7 @@ Favorise les études empiriques robustes, réplications, grands échantillons et
 Attribue seulement les valeurs discrètes ci-dessous :
 - mission_fit, sur 25 : 0 hors périmètre ; 5 périphérique ; 10 indirecte ; 15 comportement pertinent mais spécialisé, sans débouché clair pour Bellegarde ; 20 directement utile mais indirect, sectoriel ou contextuel ; 25 au cœur des missions Bellegarde, avec un mécanisme ou levier comportemental transférable pour une intervention, une politique, une communication, une architecture de décision, une adoption, une participation ou une segmentation réutilisable ;
 - scientific_robustness, sur 25 : 0 sans preuve ; 5 exploratoire ; 10 descriptive ; 15 observationnelle solide ou étude isolée sérieuse ; 20 causale, longitudinale ou multi-études ; 25 méta-analyse chiffrée, réplication ou essai particulièrement robuste ;
-- actionability, sur 25 : 0 aucune ; 5 spéculative ; 10 implication indirecte ; 15 mécanisme, segmentation ou principe transposable explicitement étayé ; 20 levier ou méthode testé ; 25 intervention directement réutilisable. Une simple section d’implications, une recommandation des auteurs ou la possibilité d’imaginer une application ne suffit pas pour atteindre 15 ;
+- actionability, sur 25 : 0 aucune ; 5 spéculative ; 10 implication indirecte ; 15 levier, mécanisme ou segmentation transférable explicitement étayé ; 20 levier ou méthode testé ; 25 intervention directement réutilisable. Une simple section d’implications, une recommandation des auteurs ou la possibilité d’imaginer une application ne suffit pas pour atteindre 15 ;
 - generalizability, sur 15 : 0 aucune ; 3 contexte unique étroit ; 6 mécanisme plausible mais contexte unique ; 9 plusieurs échantillons ; 12 plusieurs contextes ; 15 synthèse ou réplication large ;
 - novelty, sur 10 : 0 aucune ; 2 confirmation ; 4 incrémentale ; 6 résultat nouveau utile ; 8 mécanisme ou remise en cause ; 10 contribution majeure.
 
@@ -275,17 +275,15 @@ class OpenAIAnalyzer:
             "HIRAGANA",
             "KATAKANA",
         )
-        for index in range(max(0, len(text) - 16), len(text)):
-            if unicodedata.name(text[index], "").startswith(unexpected_scripts):
-                prefix = text[:index].rstrip()
-                sentence_end = max(
-                    prefix.rfind("."),
-                    prefix.rfind("!"),
-                    prefix.rfind("?"),
-                )
-                if sentence_end >= 0:
-                    return prefix[: sentence_end + 1].rstrip()
-                return prefix.rstrip(" ,;:!?-–—")
+        suffix = text.rstrip("?!")
+        if len(suffix) >= 2:
+            last = suffix[-1]
+            previous = suffix[-2]
+            if (
+                unicodedata.name(last, "").startswith(unexpected_scripts)
+                and "LATIN" in unicodedata.name(previous, "")
+            ):
+                return suffix[:-1].rstrip()
         return text
 
     @staticmethod
