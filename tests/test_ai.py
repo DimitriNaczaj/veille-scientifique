@@ -269,8 +269,10 @@ class OpenAIAnalyzerTests(unittest.TestCase):
         self.assertIn("core_mission_high", rules)
 
         result["scores"]["actionability"] = 15
-        priority, _, _, _ = OpenAIAnalyzer._classify(result)
+        priority, score, raw_score, rules = OpenAIAnalyzer._classify(result)
         self.assertIs(priority, PublicationPriority.WATCH)
+        self.assertEqual((score, raw_score), (62, 62))
+        self.assertIn("high_requires_actionability_20", rules)
 
     def test_core_high_requires_fit_robustness_actionability_and_evidence(self):
         cases = (

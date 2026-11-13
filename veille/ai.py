@@ -329,19 +329,23 @@ class OpenAIAnalyzer:
                 "high_requires_moderate_evidence",
             ),
         )
+        unmet_requirements = [
+            rule for requirement_met, rule in core_high_requirements
+            if not requirement_met
+        ]
         core_high = (
             not hard_excluded
             and cap == 100
             and has_abstract
-            and all(requirement_met for requirement_met, _ in core_high_requirements)
+            and not unmet_requirements
         )
         if core_high:
             rules.append("core_mission_high")
         elif raw_score >= 80 and not hard_excluded and cap == 100:
-            for requirement_met, rule in core_high_requirements:
-                if not requirement_met:
-                    cap = min(cap, 79)
-                    rules.append(rule)
+            cap = 79
+            rules.extend(unmet_requirements)
+        elif cap == 100 and unmet_requirements == ["high_requires_actionability_20"]:
+            rules.extend(unmet_requirements)
 
         score = min(raw_score, cap)
         if hard_excluded or score < 55:
