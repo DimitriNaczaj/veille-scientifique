@@ -109,7 +109,7 @@ class OpenAIAnalyzerTests(unittest.TestCase):
         self.assertEqual(analysis.input_tokens, 321)
         self.assertEqual(analysis.output_tokens, 87)
         self.assertEqual(analysis.model, "gpt-test")
-        self.assertEqual(analysis.prompt_version, "bellegarde-v5.2")
+        self.assertEqual(analysis.prompt_version, "bellegarde-v5.3")
         self.assertEqual(analysis.raw_interest_score, 88)
         self.assertEqual(analysis.interest_score, 88)
         self.assertEqual(analysis.mission_fit_score, 25)
@@ -255,7 +255,7 @@ class OpenAIAnalyzerTests(unittest.TestCase):
             scores={
                 "mission_fit": 25,
                 "scientific_robustness": 15,
-                "actionability": 15,
+                "actionability": 20,
                 "generalizability": 3,
                 "novelty": 4,
             },
@@ -265,8 +265,12 @@ class OpenAIAnalyzerTests(unittest.TestCase):
         priority, score, raw_score, rules = OpenAIAnalyzer._classify(result)
 
         self.assertIs(priority, PublicationPriority.HIGH)
-        self.assertEqual((score, raw_score), (62, 62))
+        self.assertEqual((score, raw_score), (67, 67))
         self.assertIn("core_mission_high", rules)
+
+        result["scores"]["actionability"] = 15
+        priority, _, _, _ = OpenAIAnalyzer._classify(result)
+        self.assertIs(priority, PublicationPriority.WATCH)
 
     def test_core_high_requires_fit_robustness_actionability_and_evidence(self):
         cases = (
@@ -296,12 +300,12 @@ class OpenAIAnalyzerTests(unittest.TestCase):
                 {
                     "mission_fit": 25,
                     "scientific_robustness": 25,
-                    "actionability": 10,
+                    "actionability": 15,
                     "generalizability": 15,
                     "novelty": 10,
                 },
                 "strong",
-                "high_requires_actionability_15",
+                "high_requires_actionability_20",
             ),
             (
                 {
