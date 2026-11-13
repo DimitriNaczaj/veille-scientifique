@@ -17,6 +17,37 @@ def publication(title, abstract=None):
 
 
 class BehavioralScienceFilterTests(unittest.TestCase):
+    def test_admits_circular_practices_without_generic_behavior_keywords(self):
+        for title in (
+            "Barriers to household waste sorting",
+            "Why residents repair their phones",
+            "Second-hand clothing purchases in France",
+            "Freins au réemploi des emballages",
+            "Household electricity savings during winter",
+            "Food waste prevention among families",
+            "Freins au tri des déchets",
+            "Tool sharing among residents",
+            "Reducing purchases among consumers",
+        ):
+            with self.subTest(title=title):
+                assessed = BehavioralScienceFilter().assess(publication(title))
+                self.assertIsNot(assessed.priority, PublicationPriority.EXCLUDED)
+
+    def test_excludes_technical_circular_work_and_corrections(self):
+        for title in (
+            "Performance of a waste sorting machine",
+            "Thermal optimization of industrial plastic recycling",
+            "Energy savings from a new heat exchanger",
+            "Machine learning forecasting of household electricity consumption",
+            "Residential energy consumption prediction using machine learning",
+            "Optimization of household energy consumption using heat pumps",
+            "Life-cycle assessment of recycling systems for urban communities",
+            "Corrigendum to Barriers to household waste sorting",
+        ):
+            with self.subTest(title=title):
+                assessed = BehavioralScienceFilter().assess(publication(title))
+                self.assertIs(assessed.priority, PublicationPriority.EXCLUDED)
+
     def test_excludes_corrections_even_when_the_title_contains_behavioral_terms(self):
         assessed = BehavioralScienceFilter().assess(
             publication(

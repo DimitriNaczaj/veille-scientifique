@@ -109,7 +109,7 @@ class OpenAIAnalyzerTests(unittest.TestCase):
         self.assertEqual(analysis.input_tokens, 321)
         self.assertEqual(analysis.output_tokens, 87)
         self.assertEqual(analysis.model, "gpt-test")
-        self.assertEqual(analysis.prompt_version, "bellegarde-v5.3")
+        self.assertEqual(analysis.prompt_version, "bellegarde-v5.4")
         self.assertEqual(analysis.raw_interest_score, 88)
         self.assertEqual(analysis.interest_score, 88)
         self.assertEqual(analysis.mission_fit_score, 25)
@@ -420,6 +420,41 @@ class OpenAIAnalyzerTests(unittest.TestCase):
         self.assertEqual(raw_score, 88)
         self.assertEqual(score, 54)
         self.assertIn("clinical_outcomes_without_behavior", rules)
+
+    def test_documented_circular_practice_is_watch_even_below_the_usual_score(self):
+        result = analysis_result(
+            scope="circular_practice",
+            scores={
+                "mission_fit": 20,
+                "scientific_robustness": 10,
+                "actionability": 10,
+                "generalizability": 3,
+                "novelty": 4,
+            },
+            evidence_quality="moderate",
+            flags={"single_context_descriptive": True},
+        )
+        priority, score, raw_score, rules = OpenAIAnalyzer._classify(result)
+        self.assertIs(priority, PublicationPriority.WATCH)
+        self.assertEqual((score, raw_score), (47, 47))
+        self.assertIn("circular_practice", rules)
+
+        undocumented = dict(result, evidence_quality="unknown")
+        priority, _, _, _ = OpenAIAnalyzer._classify(undocumented)
+        self.assertIs(priority, PublicationPriority.EXCLUDED)
+
+        result["method_flags"]["sample_below_25_per_condition"] = True
+        priority, _, _, _ = OpenAIAnalyzer._classify(result)
+        self.assertIs(priority, PublicationPriority.EXCLUDED)
+
+    def test_circular_practice_can_be_high_under_the_usual_requirements(self):
+        result = analysis_result(scope="circular_practice")
+        priority, _, _, _ = OpenAIAnalyzer._classify(result)
+        self.assertIs(priority, PublicationPriority.HIGH)
+
+        result["scores"]["actionability"] = 15
+        priority, _, _, _ = OpenAIAnalyzer._classify(result)
+        self.assertIs(priority, PublicationPriority.WATCH)
 
     def test_out_of_scope_work_is_excluded(self):
         result = analysis_result(scope="out_of_scope")

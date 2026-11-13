@@ -59,7 +59,34 @@ SINGLE_CONCEPT_EXCLUSIONS = (
 HUMAN_SUBJECT_CONTEXT = (
     r"\b(?:human|people|person|individual|participant|patient|women|men|adult|"
     r"adolescent|child|employee|consumer|citizen|student|farmer|caregiver|"
-    r"community|household|user|worker|respondent|volunteer)\w*\b"
+    r"communit(?:y|ies)|household|user|worker|respondent|volunteer|resident|"
+    r"famil(?:y|ies)|ménage|habitant|consommateur)\w*\b"
+)
+
+CIRCULAR_TOPIC = (
+    r"\b(?:repair(?:s|ed|ing)?|recycl\w*|reus\w*|r[ée]emploi|r[ée]utilis\w*|"
+    r"r[ée]par\w*|waste sorting|waste separation|source separation|tri des d[ée]chets|"
+    r"second[- ]hand|d['’]occasion|circular econom\w*|[ée]conomie circulaire|"
+    r"(?:energy|electricity) (?:sav\w*|conservation|consumption)|"
+    r"sobri[ée]t[ée] [ée]nerg[ée]tique|[ée]conomies? d['’][ée]nergie|"
+    r"food waste|gaspillage|compost\w*|refill\w*|"
+    r"(?:product|clothing|clothes|furniture|tool) (?:sharing|donation)\w*|"
+    r"(?:reducing|reduction in) (?:purchases|shopping)|"
+    r"r[ée]duction des achats|allongement de la dur[ée]e de vie)\b"
+)
+CIRCULAR_PRACTICE = (
+    r"\b(?:second[- ]hand (?:buying|purchas\w*|shopping|clothing purchas\w*)|"
+    r"achats? d['’]occasion|right to repair|droit [àa] la r[ée]paration|"
+    r"repair caf[ée]s?|(?:barriers?|motivations?|freins?|obstacles?) "
+    r"(?:to|au|aux|à la|à l['’])\s*(?:r[ée]emploi|r[ée]utilis\w*|"
+    r"r[ée]par\w*|reus\w*|repair\w*|recycl\w*|waste sorting|"
+    r"tri des d[ée]chets|compost\w*|refill\w*))\b"
+)
+CIRCULAR_TECHNICAL_TITLE = (
+    r"\b(?:machine learning (?:forecast|predict)\w*|"
+    r"(?:forecast|predict)\w*[^.]{0,70}machine learning|life[- ]cycle assessment|"
+    r"optimi[sz]ation|heat exchangers?|sorting machines?|"
+    r"taux de rendement|optimisation|analyse du cycle de vie)\b"
 )
 
 
@@ -92,6 +119,14 @@ class BehavioralScienceFilter:
                     score = 0
                     reasons.append(label)
                     break
+
+        if (not reasons or score) and not re.search(CIRCULAR_TECHNICAL_TITLE, title):
+            if re.search(CIRCULAR_PRACTICE, text) or (
+                re.search(CIRCULAR_TOPIC, text)
+                and re.search(HUMAN_SUBJECT_CONTEXT, text)
+            ):
+                score = max(score, 2)
+                reasons.append("pratique circulaire ou sobriété énergétique")
 
         if score >= 5:
             priority = PublicationPriority.HIGH
